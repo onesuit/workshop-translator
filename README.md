@@ -9,54 +9,54 @@ AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입�
 ```bash
 cd workshop-translator/WsTranslator
 
-# 의존성 설치 (한 번만, 모든 도구 포함)
+# 의존성 설치
 uv sync
 
-# Agent 설정 (한 번만)
-uv run agentcore configure --name WsTranslator_Agent
-
 # 실행!
-uv run wstranslator "안녕하세요"
+uv run wstranslator
 ```
 
 ### 방법 2: pip (전통적인 방법)
 
 ```bash
-# 프로젝트 설치 (모든 의존성 포함)
+# 프로젝트 설치
 pip install -e .
 
-# Agent 설정 (한 번만)
-agentcore configure --name WsTranslator_Agent
-
 # 실행!
-wstranslator "안녕하세요"
+wstranslator
+```
+
+### 방법 3: PyPI에서 설치 (배포 후)
+
+```bash
+# uv 사용
+uvx wstranslator
+
+# 또는 pip 사용
+pip install wstranslator
+wstranslator
 ```
 
 ## 사용 방법
 
-### 1. 원격 모드 (권장)
+### 로컬 모드 (권장)
 
-이미 배포된 AgentCore Runtime을 사용하여 실행합니다. AWS 자격 증명만 있으면 됩니다.
+로컬에서 직접 Bedrock을 호출하여 실행합니다. AgentCore 설정이 필요 없습니다.
 
 #### 필수 요구사항
 - AWS 자격 증명 설정 (AWS CLI 또는 환경 변수)
-- Agent 설정 (한 번만):
-  ```bash
-  # uv 사용 시
-  uv run agentcore configure --name WsTranslator_Agent
-  
-  # pip 사용 시
-  agentcore configure --name WsTranslator_Agent
-  ```
+- Bedrock 모델 접근 권한
 
 #### 대화형 모드
 ```bash
-# uv 사용 (빠름!)
+# uv 사용
 uv run wstranslator
 
 # 또는 pip 설치 후
 wstranslator
 ```
+
+대화형 모드에서는 여러 질문을 연속으로 할 수 있으며, 종료하려면 `exit` 또는 `quit`를 입력하세요.
 
 #### 단일 쿼리
 ```bash
@@ -65,81 +65,39 @@ uv run wstranslator "워크샵 분석"
 wstranslator "워크샵 분석"
 ```
 
-#### 세션 ID 지정 (대화 컨텍스트 유지)
-```bash
-uv run wstranslator --session-id my-session "첫 번째 질문"
-uv run wstranslator --session-id my-session "두 번째 질문"
-```
+### 원격 모드 (고급)
 
-### 2. 로컬 모드
+이미 배포된 AgentCore Runtime을 사용하여 실행합니다. 
+원격 모드를 사용하려면 별도의 AgentCore Runtime 배포와 IAM 권한 설정이 필요합니다.
 
-로컬에서 직접 Bedrock을 호출하여 실행합니다.
+#### AgentCore Runtime 배포
 
-#### 필수 요구사항
-- AWS 자격 증명 설정
-- Bedrock 모델 접근 권한
+1. `.bedrock_agentcore.yaml` 파일 준비
+2. AgentCore CLI로 배포:
+   ```bash
+   agentcore deploy
+   ```
+3. Runtime ARN 확인
 
-```bash
-uv run wstranslator --local
-# 또는
-wstranslator --local
-```
+#### 원격 모드 실행
 
-## Agent 설정
-
-처음 사용 시 Agent를 설정해야 합니다:
-
-```bash
-# uv 사용 시
-uv run agentcore configure --name WsTranslator_Agent
-
-# 또는 pip 설치 후
-agentcore configure --name WsTranslator_Agent
-```
-
-설정 시 다음 정보를 입력하세요:
-- **Agent Name**: WsTranslator_Agent (기본값)
-- **Entrypoint**: (Enter를 눌러 건너뛰기 - 원격 Runtime 사용)
-- **Memory**: 비활성화 (기본값)
-
-## 환경 변수
-
-다른 Agent를 사용하려면 환경 변수를 설정할 수 있습니다:
-
-```bash
-export WSTRANSLATOR_AGENT_NAME=MyCustomAgent
-wstranslator
-```
+원격 모드 코드는 `src/cli_remote_backup.py`에 백업되어 있습니다.
+필요한 경우 해당 파일을 참고하여 구현할 수 있습니다.
 
 ## 옵션
 
 ```
-wstranslator [OPTIONS] [PROMPT]
+wstranslator [PROMPT]
 
-옵션:
-  --local              로컬 모드로 실행 (Bedrock 직접 호출)
-  --agent NAME         Agent 이름 (기본값: WsTranslator_Agent)
-  --session-id ID      세션 ID (대화 컨텍스트 유지)
-  --region REGION      AWS 리전 (기본값: us-east-1)
-  -h, --help           도움말 표시
+인자:
+  PROMPT              번역 요청 또는 질문 (선택사항, 없으면 대화형 모드)
+
+환경 변수:
+  AWS_REGION          AWS 리전 (기본값: us-east-1)
+  AWS_PROFILE         AWS 프로파일
 ```
 
 ## 문제 해결
-
-### Agent not found 에러
-```bash
-# Agent 설정
-agentcore configure --name WsTranslator_Agent
-```
-
-### agentcore CLI가 없는 경우
-```bash
-# 프로젝트를 다시 설치하면 모든 의존성이 포함됩니다
-pip install -e .
-
-# 또는 직접 설치
-pip install bedrock-agentcore strands-agents bedrock-agentcore-starter-toolkit
-```
 
 ### AWS 자격 증명 오류
 ```bash
@@ -152,8 +110,23 @@ export AWS_SECRET_ACCESS_KEY=your_secret
 export AWS_REGION=us-east-1
 ```
 
+### Bedrock 모델 접근 권한 오류
+AWS 콘솔에서 Bedrock 모델 접근 권한을 활성화해야 합니다:
+1. AWS Console > Bedrock > Model access
+2. 필요한 모델 활성화 (예: Claude 3.5 Sonnet)
+
+### 의존성 설치 문제
+```bash
+# uv 사용 시
+uv sync
+
+# pip 사용 시
+pip install -e .
+```
+
 ## 개발자 정보
 
-- **Runtime ARN**: `arn:aws:bedrock-agentcore:us-east-1:287870618970:runtime/WsTranslator_Agent-c5xpge73P0`
-- **Agent Name**: `WsTranslator_Agent`
-- **Region**: `us-east-1`
+- **작성자**: Jisan Bang (wltks2155@gmail.com)
+- **GitHub**: https://github.com/onesuit/workshop-translator
+- **라이선스**: MIT
+- **Python 버전**: 3.10+
