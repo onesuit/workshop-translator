@@ -1,0 +1,187 @@
+# 파일 처리 도구
+import os
+import glob
+import yaml
+from pathlib import Path
+from typing import Optional
+
+
+def read_workshop_file(file_path: str) -> str:
+    """
+    Workshop 파일을 읽습니다.
+    
+    Args:
+        file_path: 파일 경로
+    
+    Returns:
+        str: 파일 내용
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def write_translated_file(
+    source_path: str, 
+    content: str, 
+    target_lang: str
+) -> str:
+    """
+    번역된 파일을 저장합니다.
+    .en.md → .{target_lang}.md 형식으로 저장
+    
+    Args:
+        source_path: 원본 파일 경로 (.en.md)
+        content: 번역된 내용
+        target_lang: 타겟 언어 코드 (ko, ja, zh 등)
+    
+    Returns:
+        str: 저장된 파일 경로
+    """
+    # .en.md → .{target_lang}.md
+    target_path = source_path.replace(".en.md", f".{target_lang}.md")
+    
+    # 디렉토리 생성 (필요시)
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    
+    with open(target_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    
+    return target_path
+
+
+def list_workshop_files(workshop_path: str, pattern: str = "**/*.en.md") -> list[str]:
+    """
+    Workshop 디렉토리에서 번역 대상 파일 목록을 반환합니다.
+    
+    Args:
+        workshop_path: Workshop 루트 경로
+        pattern: glob 패턴 (기본: **/*.en.md)
+    
+    Returns:
+        list[str]: 파일 경로 목록
+    """
+    content_path = os.path.join(workshop_path, "content")
+    if os.path.exists(content_path):
+        search_path = content_path
+    else:
+        search_path = workshop_path
+    
+    files = glob.glob(os.path.join(search_path, pattern), recursive=True)
+    return sorted(files)
+
+
+def read_contentspec(workshop_path: str) -> Optional[dict]:
+    """
+    contentspec.yaml 파일을 읽습니다.
+    
+    Args:
+        workshop_path: Workshop 루트 경로
+    
+    Returns:
+        dict: contentspec 내용 (없으면 None)
+    """
+    contentspec_path = os.path.join(workshop_path, "contentspec.yaml")
+    if not os.path.exists(contentspec_path):
+        return None
+    
+    with open(contentspec_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def get_supported_languages(workshop_path: str) -> list[str]:
+    """
+    Workshop에서 지원하는 언어 목록을 반환합니다.
+    
+    Args:
+        workshop_path: Workshop 루트 경로
+    
+    Returns:
+        list[str]: 언어 코드 목록
+    """
+    contentspec = read_contentspec(workshop_path)
+    if contentspec and "locale_codes" in contentspec:
+        return contentspec["locale_codes"]
+    return ["en"]
+
+
+def count_lines(file_path: str) -> int:
+    """
+    파일의 줄 수를 반환합니다.
+    
+    Args:
+        file_path: 파일 경로
+    
+    Returns:
+        int: 줄 수
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        return len(f.readlines())
+
+
+def compare_line_counts(source_path: str, target_path: str) -> dict:
+    """
+    원본과 번역본의 줄 수를 비교합니다.
+    
+    Args:
+        source_path: 원본 파일 경로
+        target_path: 번역 파일 경로
+    
+    Returns:
+        dict: 비교 결과 (source_lines, target_lines, diff_percent)
+    """
+    source_lines = count_lines(source_path)
+    target_lines = count_lines(target_path)
+    
+    if source_lines == 0:
+        diff_percent = 0
+    else:
+        diff_percent = abs(target_lines - source_lines) / source_lines * 100
+    
+    return {
+        "source_lines": source_lines,
+        "target_lines": target_lines,
+        "diff_percent": round(diff_percent, 2)
+    }
+
+
+def get_directory_structure(path: str, prefix: str = "", max_depth: int = 3) -> str:
+    """
+    디렉토리 구조를 트리 형식 문자열로 반환합니다.
+    
+    Args:
+        path: 디렉토리 경로
+        prefix: 출력 접두사
+        max_depth: 최대 깊이
+    
+    Returns:
+        str: 트리 형식 문자열
+    """
+    if max_depth == 0:
+        return ""
+    
+    result = []
+    items = sorted(os.listdir(path))
+    
+    # 숨김 파일 제외
+    items = [i for i in items if not i.startswith(".")]
+    
+    for i, item in enumerate(items):
+        item_path = os.path.join(path, item)
+        is_last = i == len(items) - 1
+        
+        # 현재 항목 출력
+        connector = "└── " if is_last else "├── "
+        result.append(f"{prefix}{connector}{item}")
+        
+        # 디렉토리면 재귀 호출
+        if os.path.isdir(item_path):
+            extension = "    " if is_last else "│   "
+            sub_tree = get_directory_structure(
+                item_path, 
+                prefix + extension, 
+                max_depth - 1
+            )
+            if sub_tree:
+                result.append(sub_tree)
+    
+    return "\n".join(result)

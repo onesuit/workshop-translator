@@ -15,6 +15,7 @@ dependencies = [
     "pytest >= 7.0.0",
     "pytest-asyncio >= 0.21.0",
     "python-dotenv >= 1.2.1",
+    "pyyaml >= 6.0",
     "strands-agents >= 1.13.0",
     "strands-agents-tools >= 0.2.16"
 ]
