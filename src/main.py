@@ -87,8 +87,10 @@ def run_cli():
     print("=" * 60)
     print("Workshop Translator Agent")
     print("=" * 60)
-    print("\n안녕하세요! Workshop 번역을 도와드리겠습니다.")
-    print("종료하려면 'exit' 또는 'quit'를 입력하세요.\n")
+    print("\n안녕하세요! AWS Workshop 번역을 도와드리겠습니다.")
+    print("💡 이 도구는 AWS Bedrock을 사용합니다. AWS 자격 증명이 필요합니다.")
+    print("   (aws configure 또는 환경 변수로 설정)")
+    print("\n종료하려면 'exit' 또는 'quit'를 입력하세요.\n")
     
     # Conversation Manager 설정
     conversation_manager = SummarizingConversationManager(
