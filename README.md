@@ -1,135 +1,159 @@
-# Workshop Translator Agent
+# Workshop Translator
 
-AWS Workshop 콘텐츠를 다국어로 번역하는 Spec-driven 멀티 에이전트 시스템입니다.
-
-## 개요
-
-Kiro의 Spec 방식(requirements → design → tasks)을 Agent로 자동화합니다.
-oh-my-opencode 패턴(Sisyphus, Oracle, Librarian, Explore, Document Writer)을 참고하여 설계되었습니다.
-
-## 에이전트 구조
-
-| Agent | 모델 | 역할 |
-|-------|------|------|
-| Orchestrator | Opus 4.5 | 대화형 인터페이스, 워크플로우 조율 |
-| Analyzer | Haiku | Workshop 구조 분석 |
-| Designer | Sonnet 4.5 | Design 문서 생성 |
-| TaskPlanner | Sonnet 4.5 | Tasks 문서 생성 |
-| Translator | Sonnet 4.5 | 실제 번역 (병렬) |
-| Reviewer | Sonnet 4.5 | 품질 검토 |
-| Validator | Haiku | 구조 검증 |
+AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입니다.
 
 ## 설치
 
-```bash
-# Python 3.13 가상환경 생성
-python3.13 -m venv .venv
-source .venv/bin/activate
+### 방법 1: uv (권장 - 가장 빠름!)
 
-# 패키지 설치
+```bash
+cd workshop-translator/WsTranslator
+
+# 의존성 설치 (한 번만, 모든 도구 포함)
+uv sync
+
+# Agent 설정 (한 번만)
+uv run agentcore configure --name WsTranslator_Agent
+
+# 실행!
+uv run wstranslator "안녕하세요"
+```
+
+### 방법 2: pip (전통적인 방법)
+
+```bash
+# 프로젝트 설치 (모든 의존성 포함)
 pip install -e .
+
+# Agent 설정 (한 번만)
+agentcore configure --name WsTranslator_Agent
+
+# 실행!
+wstranslator "안녕하세요"
 ```
 
-## 사용법
+## 사용 방법
 
-### CLI 모드
+### 1. 원격 모드 (권장)
+
+이미 배포된 AgentCore Runtime을 사용하여 실행합니다. AWS 자격 증명만 있으면 됩니다.
+
+#### 필수 요구사항
+- AWS 자격 증명 설정 (AWS CLI 또는 환경 변수)
+- Agent 설정 (한 번만):
+  ```bash
+  # uv 사용 시
+  uv run agentcore configure --name WsTranslator_Agent
+  
+  # pip 사용 시
+  agentcore configure --name WsTranslator_Agent
+  ```
+
+#### 대화형 모드
+```bash
+# uv 사용 (빠름!)
+uv run wstranslator
+
+# 또는 pip 설치 후
+wstranslator
+```
+
+#### 단일 쿼리
+```bash
+uv run wstranslator "워크샵 분석"
+# 또는
+wstranslator "워크샵 분석"
+```
+
+#### 세션 ID 지정 (대화 컨텍스트 유지)
+```bash
+uv run wstranslator --session-id my-session "첫 번째 질문"
+uv run wstranslator --session-id my-session "두 번째 질문"
+```
+
+### 2. 로컬 모드
+
+로컬에서 직접 Bedrock을 호출하여 실행합니다.
+
+#### 필수 요구사항
+- AWS 자격 증명 설정
+- Bedrock 모델 접근 권한
 
 ```bash
-cd src
-python main.py cli
+uv run wstranslator --local
+# 또는
+wstranslator --local
 ```
 
-### AgentCore Runtime 모드
+## Agent 설정
+
+처음 사용 시 Agent를 설정해야 합니다:
 
 ```bash
-agentcore local run
+# uv 사용 시
+uv run agentcore configure --name WsTranslator_Agent
+
+# 또는 pip 설치 후
+agentcore configure --name WsTranslator_Agent
 ```
 
-## 대화 예시
+설정 시 다음 정보를 입력하세요:
+- **Agent Name**: WsTranslator_Agent (기본값)
+- **Entrypoint**: (Enter를 눌러 건너뛰기 - 원격 Runtime 사용)
+- **Memory**: 비활성화 (기본값)
 
-```
-사용자: 번역 시작
+## 환경 변수
 
-에이전트: 안녕하세요! Workshop 번역을 도와드리겠습니다.
-         어떤 Workshop 디렉토리를 번역할까요?
+다른 Agent를 사용하려면 환경 변수를 설정할 수 있습니다:
 
-사용자: /path/to/workshop
-
-에이전트: 타겟 언어를 선택해주세요. (예: ko, ja, zh)
-
-사용자: ko
-
-에이전트: 분석을 시작합니다...
-         40개 파일을 발견했습니다.
-         Design 문서를 생성합니다...
-         Tasks 문서를 생성합니다...
-         번역을 시작합니다... (병렬 처리)
-         품질 검토 중...
-         구조 검증 중...
-         
-         ✅ 번역 완료!
-         - 번역된 파일: 40개
-         - 품질 점수: 92/100
-         - 검증 결과: PASS
+```bash
+export WSTRANSLATOR_AGENT_NAME=MyCustomAgent
+wstranslator
 ```
 
-## 프로젝트 구조
+## 옵션
 
 ```
-WsTranslator/
-├── src/
-│   ├── main.py                    # Orchestrator 진입점
-│   ├── agents/
-│   │   ├── analyzer.py            # @tool - 구조 분석
-│   │   ├── designer.py            # @tool - Design 생성
-│   │   ├── task_planner.py        # @tool - Tasks 생성
-│   │   ├── translator.py          # @tool - 번역 (병렬)
-│   │   ├── reviewer.py            # @tool - 품질 검토
-│   │   └── validator.py           # @tool - 구조 검증
-│   ├── prompts/
-│   │   ├── requirements.md        # 재사용 가능한 요구사항
-│   │   └── system_prompts.py      # 각 에이전트 시스템 프롬프트
-│   ├── tools/
-│   │   └── file_tools.py          # 파일 읽기/쓰기
-│   ├── mcp_client/
-│   │   └── client.py              # AWS Docs + Context7 MCP
-│   └── model/
-│       └── load.py                # 다중 모델 로드
-├── DESIGN_SPEC.md                 # 설계 명세서
-├── .bedrock_agentcore.yaml
-└── pyproject.toml
+wstranslator [OPTIONS] [PROMPT]
+
+옵션:
+  --local              로컬 모드로 실행 (Bedrock 직접 호출)
+  --agent NAME         Agent 이름 (기본값: WsTranslator_Agent)
+  --session-id ID      세션 ID (대화 컨텍스트 유지)
+  --region REGION      AWS 리전 (기본값: us-east-1)
+  -h, --help           도움말 표시
 ```
 
-## MCP 연동
+## 문제 해결
 
-AWS Documentation MCP와 Context7을 연동하여 정확한 AWS 용어를 사용합니다.
-
-`.kiro/settings/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "aws-docs": {
-      "command": "uvx",
-      "args": ["awslabs.aws-documentation-mcp-server@latest"]
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@context7/mcp-server"]
-    }
-  }
-}
+### Agent not found 에러
+```bash
+# Agent 설정
+agentcore configure --name WsTranslator_Agent
 ```
 
-## 지원 언어
+### agentcore CLI가 없는 경우
+```bash
+# 프로젝트를 다시 설치하면 모든 의존성이 포함됩니다
+pip install -e .
 
-- ko (한국어)
-- ja (日本語)
-- zh (中文)
-- es (Español)
-- fr (Français)
-- de (Deutsch)
-- pt (Português)
+# 또는 직접 설치
+pip install bedrock-agentcore strands-agents bedrock-agentcore-starter-toolkit
+```
 
-## 라이선스
+### AWS 자격 증명 오류
+```bash
+# AWS CLI 설정
+aws configure
 
-Amazon Internal
+# 또는 환경 변수 설정
+export AWS_ACCESS_KEY_ID=your_key
+export AWS_SECRET_ACCESS_KEY=your_secret
+export AWS_REGION=us-east-1
+```
+
+## 개발자 정보
+
+- **Runtime ARN**: `arn:aws:bedrock-agentcore:us-east-1:287870618970:runtime/WsTranslator_Agent-c5xpge73P0`
+- **Agent Name**: `WsTranslator_Agent`
+- **Region**: `us-east-1`

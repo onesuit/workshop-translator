@@ -1,0 +1,32 @@
+# 포함할 파일
+include README.md
+include LICENSE
+
+# 제외할 파일
+exclude .bedrock_agentcore.yaml
+exclude TEST_INSTALL.md
+exclude DESIGN_SPEC.md
+exclude TODO_MCP_INTEGRATION.md
+exclude uv.lock
+
+# src 디렉토리에서 백업 파일 제외
+exclude src/cli_remote_backup.py
+
+# 패턴으로 제외
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.log
+global-exclude .git*
+global-exclude *~
+global-exclude *.swp
+
+# 디렉토리 제외
+prune .bedrock_agentcore
+prune test
+prune tests
+prune .venv
+prune .venv_test
+prune dist
+prune build
