@@ -5,11 +5,11 @@ from strands.models import BedrockModel
 # https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
 MODELS = {
     # Opus 4.5 - Orchestrator용 (extended thinking 지원)
-    "opus": "global.anthropic.claude-opus-4-20250514-v1:0",
+    "opus": "global.anthropic.claude-opus-4-5-20251101-v1:0",
     # Sonnet 4.5 - Designer, TaskPlanner, Translator, Reviewer용
     "sonnet": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     # Haiku 4.5 - Analyzer, Validator용 (빠른 처리)
-    "haiku": "global.anthropic.claude-haiku-4-5-20250929-v1:0",
+    "haiku": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
 }
 
 # 기본 모델 (Sonnet)
