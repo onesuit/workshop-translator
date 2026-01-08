@@ -103,8 +103,14 @@ def generate_tasks(
         "",
         "## 진행 상황",
         "",
+        "**체크박스 상태 범례**:",
+        "- `[ ]` = 미완료 (Not Started)",
+        "- `[~]` = 진행 중 (In Progress)",
+        "- `[x]` = 완료 (Completed)",
+        "",
         f"- 총 태스크: {len(files) + 5}개",
         "- 완료: 0개",
+        "- 진행 중: 0개",
         "- 진행률: 0%",
     ])
     
@@ -127,14 +133,19 @@ def generate_tasks(
     }
 
 
-def update_task_status(tasks_path: str, task_id: str, completed: bool = True) -> bool:
+def update_task_status(tasks_path: str, task_id: str, status: str = "completed") -> bool:
     """
     태스크 상태를 업데이트합니다.
+    
+    체크박스 상태:
+    - [ ] = 미완료 (Not Started)
+    - [~] = 진행 중 (In Progress)
+    - [x] = 완료 (Completed)
     
     Args:
         tasks_path: tasks.md 파일 경로
         task_id: 태스크 ID (예: "2.1")
-        completed: 완료 여부
+        status: 상태 ("in_progress", "completed", "not_started")
     
     Returns:
         bool: 업데이트 성공 여부
@@ -145,24 +156,40 @@ def update_task_status(tasks_path: str, task_id: str, completed: bool = True) ->
     with open(tasks_path, "r", encoding="utf-8") as f:
         content = f.read()
     
-    # 상태 변경
-    if completed:
-        # [ ] → [x]
-        old_pattern = f"- [ ] {task_id}"
-        new_pattern = f"- [x] {task_id}"
-    else:
-        # [x] → [ ]
-        old_pattern = f"- [x] {task_id}"
-        new_pattern = f"- [ ] {task_id}"
+    # 현재 상태 찾기
+    current_patterns = [
+        f"- [ ] {task_id}",
+        f"- [~] {task_id}",
+        f"- [x] {task_id}",
+    ]
     
-    if old_pattern not in content:
+    current_pattern = None
+    for pattern in current_patterns:
+        if pattern in content:
+            current_pattern = pattern
+            break
+    
+    if current_pattern is None:
         return False
     
-    content = content.replace(old_pattern, new_pattern)
+    # 새 상태 결정
+    if status == "in_progress":
+        new_pattern = f"- [~] {task_id}"
+    elif status == "completed":
+        new_pattern = f"- [x] {task_id}"
+    elif status == "not_started":
+        new_pattern = f"- [ ] {task_id}"
+    else:
+        return False
+    
+    # 상태 변경
+    content = content.replace(current_pattern, new_pattern, 1)
     
     # 진행률 업데이트
     completed_count = content.count("- [x]")
-    total_count = content.count("- [x]") + content.count("- [ ]")
+    in_progress_count = content.count("- [~]")
+    not_started_count = content.count("- [ ]")
+    total_count = completed_count + in_progress_count + not_started_count
     
     if total_count > 0:
         progress = int(completed_count / total_count * 100)
@@ -172,6 +199,11 @@ def update_task_status(tasks_path: str, task_id: str, completed: bool = True) ->
         content = re.sub(
             r"- 완료: \d+개",
             f"- 완료: {completed_count}개",
+            content
+        )
+        content = re.sub(
+            r"- 진행 중: \d+개",
+            f"- 진행 중: {in_progress_count}개",
             content
         )
         content = re.sub(

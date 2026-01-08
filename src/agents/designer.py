@@ -103,6 +103,7 @@ def generate_design(
     
     이 도구는 Orchestrator가 호출하며, 내부에서 Designer Agent를 실행합니다.
     Agent는 LLM을 사용하여 번역 프로젝트의 설계 문서를 생성합니다.
+    Agent는 file_read 도구를 사용하여 requirements.md를 읽고 반영할 수 있습니다.
     
     Args:
         workshop_path: Workshop 디렉토리 경로
@@ -126,6 +127,9 @@ def generate_design(
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
+    # requirements.md 경로
+    requirements_path = os.path.join(workshop_path, ".kiro", "specs", "translation", "requirements.md")
+    
     # Agent에게 Design 문서 생성 요청
     prompt = f"""
 Design 문서를 생성해주세요.
@@ -135,8 +139,12 @@ Design 문서를 생성해주세요.
 **번역 대상 파일 수**: {file_count}개
 **노력 추정**: {effort_estimate}
 
+**Requirements 파일**: {requirements_path}
+- 이 경로에 requirements.md가 있으면 file_read 도구로 읽어서 내용을 반영하세요
+- 없으면 기본 번역 규칙으로 진행하세요
+
 DESIGNER_PROMPT에 명시된 형식으로 Design 문서를 작성하고,
-{output_path} 경로에 저장해주세요.
+{output_path} 경로에 file_write 도구로 저장해주세요.
 
 반드시 다음 섹션을 포함하세요:
 1. Overview

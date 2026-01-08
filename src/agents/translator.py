@@ -164,11 +164,11 @@ def translate_files_parallel(
     3. tasks.md 파일에서 완료 상태 추적
     
     Args:
-        files: 번역 대상 파일 목록 (최대 10개 권장)
+        files: 번역 대상 파일 목록 (최대 5개 권장)
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
         tasks_path: tasks.md 파일 경로
         source_lang: 소스 언어 코드 (기본: en)
-        max_concurrent: 최대 동시 실행 수 (기본: 5)
+        max_concurrent: 최대 동시 실행 수 (기본: 5, 권장 최대값)
     
     Returns:
         dict: 번역 시작 결과 (즉시 반환)
@@ -193,12 +193,18 @@ def translate_files_parallel(
         """
         with semaphore:  # 최대 max_concurrent개만 동시 실행
             try:
+                # 번역 시작 시 진행 중 상태로 변경
+                update_task_status(tasks_path, task_id, status="in_progress")
+                
                 # translate_file 도구 함수 호출 (내부에서 Agent 생성 및 실행)
                 result = translate_file(file_path, target_lang, source_lang)
                 
                 # 성공 시 tasks.md 업데이트
                 if result.get("success"):
-                    update_task_status(tasks_path, task_id, completed=True)
+                    update_task_status(tasks_path, task_id, status="completed")
+                else:
+                    # 실패 시 미완료 상태로 되돌림
+                    update_task_status(tasks_path, task_id, status="not_started")
                 
             except Exception as e:
                 print(f"번역 실패 ({file_path}): {e}")
