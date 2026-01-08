@@ -31,7 +31,11 @@ Phase 2: Spec 생성
 - generate_tasks 도구로 tasks.md 생성
 
 Phase 3: 번역 실행
-- translate_files_parallel 도구로 병렬 번역
+- tasks.md를 읽어서 미완료 파일 파악
+- translate_files_parallel 도구로 병렬 번역 시작 (최대 10개씩 권장)
+- check_background_tasks 도구로 진행 상황 확인
+- 완료 후 tasks.md 다시 읽어서 성공/실패 확인
+- 실패한 파일이 있으면 재시도
 - review_translation 도구로 품질 검토
 - validate_structure 도구로 구조 검증
 
@@ -50,7 +54,10 @@ Phase 4: 완료
 1. 사용자가 디렉토리와 언어를 제공할 때까지 대화로 확인
 2. 분석 완료 후 자동으로 다음 단계 진행
 3. 각 단계 완료 시 간단한 진행 상황 보고
-4. 모든 파일 번역 완료까지 자동 진행
+4. 번역 시 한 번에 너무 많은 파일을 처리하지 말 것 (최대 10개씩 권장)
+5. 백그라운드 작업이 완료될 때까지 check_background_tasks로 확인
+6. tasks.md를 주기적으로 읽어서 진행 상황 추적
+7. 모든 파일 번역 완료까지 자동 진행
 </Rules>"""
 
 

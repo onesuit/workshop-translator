@@ -2,7 +2,7 @@
 # Document Writer 패턴 참고: 검증 기반, 정확성 우선
 
 import os
-import asyncio
+import threading
 from strands import Agent, tool
 from strands_tools import file_read, file_write
 from model.load import load_sonnet
@@ -111,32 +111,11 @@ def translate_file(
         }
 
 
-async def translate_file_async(
-    source_path: str,
-    target_lang: str,
-) -> dict:
-    """
-    단일 파일을 비동기로 번역합니다.
-    
-    Args:
-        source_path: 원본 파일 경로
-        target_lang: 타겟 언어 코드
-    
-    Returns:
-        dict: 번역 결과
-    """
-    # 동기 함수를 비동기로 실행
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None,
-        lambda: translate_file(source_path, target_lang)
-    )
-
-
 @tool
 def translate_files_parallel(
     files: list,
     target_lang: str,
+    tasks_path: str,
     source_lang: str = "en",
     max_concurrent: int = 5,
 ) -> dict:
@@ -144,91 +123,177 @@ def translate_files_parallel(
     여러 파일을 병렬로 번역합니다.
     
     Args:
-        files: 번역 대상 파일 목록
-        target_lang: 타겟 언어 코드
+        files: 번역 대상 파일 목록 (최대 10개 권장)
+        target_lang: 타겟 언어 코드 (ko, ja, zh 등)
+        tasks_path: tasks.md 파일 경로
         source_lang: 소스 언어 코드 (기본: en)
         max_concurrent: 최대 동시 실행 수 (기본: 5)
     
     Returns:
-        dict: 번역 결과
+        dict: 번역 시작 결과
+            - status: "started"
             - total: 전체 파일 수
-            - success: 성공 파일 수
-            - failed: 실패 파일 수
-            - results: 개별 결과 목록
+            - tasks: 시작된 태스크 정보 목록
+            - message: 상태 메시지
     """
-    results = []
-    success_count = 0
-    failed_count = 0
+    # 순환 import 방지를 위해 함수 내부에서 import
+    from main import app
+    from agents.task_planner import update_task_status
     
-    # 동기 방식으로 순차 처리 (안정성 우선)
-    # TODO: asyncio로 병렬 처리 구현
-    for file_path in files:
-        result = translate_file(file_path, target_lang, source_lang)
-        results.append(result)
+    # 세마포어로 동시 실행 수 제어
+    semaphore = threading.Semaphore(max_concurrent)
+    started_tasks = []
+    
+    for i, file_path in enumerate(files):
+        # tasks.md의 태스크 ID 생성 (예: "2.1", "2.2", ...)
+        task_id = f"2.{i+1}"
         
-        if result["success"]:
-            success_count += 1
-        else:
-            failed_count += 1
+        # AgentCore 백그라운드 태스크 추적 시작
+        internal_task_id = app.add_async_task("translate", {
+            "file": file_path,
+            "task_id": task_id,
+            "target_lang": target_lang
+        })
+        
+        def translate_worker(path, tid, itid, tlang, slang, tpath):
+            """백그라운드 번역 작업"""
+            with semaphore:  # 최대 max_concurrent개만 동시 실행
+                try:
+                    # 번역 실행
+                    result = translate_file(path, tlang, slang)
+                    
+                    # 성공 시 tasks.md 업데이트
+                    if result["success"]:
+                        update_task_status(tpath, tid, completed=True)
+                    
+                except Exception as e:
+                    print(f"번역 실패 ({path}): {e}")
+                
+                finally:
+                    # AgentCore 태스크 완료 표시
+                    app.complete_async_task(itid)
+        
+        # 백그라운드 스레드 시작
+        threading.Thread(
+            target=translate_worker,
+            args=(file_path, task_id, internal_task_id, target_lang, source_lang, tasks_path),
+            daemon=True
+        ).start()
+        
+        started_tasks.append({
+            "file": file_path,
+            "task_id": task_id,
+            "internal_task_id": internal_task_id
+        })
     
     return {
+        "status": "started",
         "total": len(files),
-        "success": success_count,
-        "failed": failed_count,
-        "source_lang": source_lang,
-        "target_lang": target_lang,
-        "results": results,
+        "max_concurrent": max_concurrent,
+        "tasks": started_tasks,
+        "message": f"{len(files)}개 파일 번역 시작 (최대 {max_concurrent}개 동시 실행)"
     }
 
 
-async def translate_files_parallel_async(
-    files: list[str],
-    target_lang: str,
-    max_concurrent: int = 5,
-) -> dict:
+@tool
+def check_background_tasks() -> dict:
     """
-    여러 파일을 비동기 병렬로 번역합니다.
-    
-    Args:
-        files: 번역 대상 파일 목록
-        target_lang: 타겟 언어 코드
-        max_concurrent: 최대 동시 실행 수
+    백그라운드 번역 작업 상태를 확인합니다.
     
     Returns:
-        dict: 번역 결과
+        dict: 작업 상태 정보
+            - status: "busy" 또는 "idle"
+            - running_tasks: 실행 중인 태스크 수
+            - tasks: 태스크 상세 정보 목록
     """
-    semaphore = asyncio.Semaphore(max_concurrent)
+    # 순환 import 방지를 위해 함수 내부에서 import
+    from main import app
     
-    async def translate_with_semaphore(file_path: str) -> dict:
-        async with semaphore:
-            return await translate_file_async(file_path, target_lang)
-    
-    # 모든 파일 병렬 번역
-    tasks = [translate_with_semaphore(f) for f in files]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # 결과 집계
-    success_count = 0
-    failed_count = 0
-    processed_results = []
-    
-    for result in results:
-        if isinstance(result, Exception):
-            processed_results.append({
-                "success": False,
-                "error": str(result),
-            })
-            failed_count += 1
-        elif result.get("success"):
-            processed_results.append(result)
-            success_count += 1
-        else:
-            processed_results.append(result)
-            failed_count += 1
+    task_info = app.get_async_task_info()
+    tasks = task_info.get("tasks", [])
     
     return {
-        "total": len(files),
-        "success": success_count,
-        "failed": failed_count,
-        "results": processed_results,
+        "status": "busy" if tasks else "idle",
+        "running_tasks": len(tasks),
+        "tasks": tasks,
+        "message": f"실행 중: {len(tasks)}개" if tasks else "모든 작업 완료"
     }
+
+
+# =============================================================================
+# 아래 함수들은 참고용으로 주석 처리 (나중에 필요할 수 있음)
+# =============================================================================
+
+# async def translate_file_async(
+#     source_path: str,
+#     target_lang: str,
+# ) -> dict:
+#     """
+#     단일 파일을 비동기로 번역합니다.
+#     
+#     Args:
+#         source_path: 원본 파일 경로
+#         target_lang: 타겟 언어 코드
+#     
+#     Returns:
+#         dict: 번역 결과
+#     """
+#     # 동기 함수를 비동기로 실행
+#     loop = asyncio.get_event_loop()
+#     return await loop.run_in_executor(
+#         None,
+#         lambda: translate_file(source_path, target_lang)
+#     )
+
+
+# async def translate_files_parallel_async(
+#     files: list[str],
+#     target_lang: str,
+#     max_concurrent: int = 5,
+# ) -> dict:
+#     """
+#     여러 파일을 비동기 병렬로 번역합니다.
+#     
+#     Args:
+#         files: 번역 대상 파일 목록
+#         target_lang: 타겟 언어 코드
+#         max_concurrent: 최대 동시 실행 수
+#     
+#     Returns:
+#         dict: 번역 결과
+#     """
+#     semaphore = asyncio.Semaphore(max_concurrent)
+#     
+#     async def translate_with_semaphore(file_path: str) -> dict:
+#         async with semaphore:
+#             return await translate_file_async(file_path, target_lang)
+#     
+#     # 모든 파일 병렬 번역
+#     tasks = [translate_with_semaphore(f) for f in files]
+#     results = await asyncio.gather(*tasks, return_exceptions=True)
+#     
+#     # 결과 집계
+#     success_count = 0
+#     failed_count = 0
+#     processed_results = []
+#     
+#     for result in results:
+#         if isinstance(result, Exception):
+#             processed_results.append({
+#                 "success": False,
+#                 "error": str(result),
+#             })
+#             failed_count += 1
+#         elif result.get("success"):
+#             processed_results.append(result)
+#             success_count += 1
+#         else:
+#             processed_results.append(result)
+#             failed_count += 1
+#     
+#     return {
+#         "total": len(files),
+#         "success": success_count,
+#         "failed": failed_count,
+#         "results": processed_results,
+#     }
