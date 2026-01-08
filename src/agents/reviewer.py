@@ -31,6 +31,8 @@ def review_translation(
     source_path: str,
     target_path: str,
     target_lang: str,
+    tasks_path: str = None,
+    task_id: str = None,
 ) -> dict:
     """
     번역 품질을 검토합니다.
@@ -42,6 +44,8 @@ def review_translation(
         source_path: 원본 파일 경로
         target_path: 번역 파일 경로
         target_lang: 타겟 언어 코드
+        tasks_path: tasks.md 파일 경로 (선택)
+        task_id: 태스크 ID (선택, tasks.md 업데이트용)
     
     Returns:
         dict: 검토 결과
@@ -54,6 +58,11 @@ def review_translation(
             - source_lines: 원본 줄 수
             - target_lines: 번역 줄 수
     """
+    # tasks.md 업데이트 (검토 시작)
+    if tasks_path and task_id:
+        from agents.task_planner import update_task_status
+        update_task_status(tasks_path, task_id, status="in_progress")
+    
     try:
         # 파일 읽기
         source_content = read_workshop_file(source_path)
@@ -112,7 +121,7 @@ def review_translation(
         score = max(0, min(100, score))
         status = "PASS" if score >= 80 else "FAIL"
         
-        return {
+        result = {
             "file": target_path,
             "score": score,
             "status": status,
@@ -123,7 +132,19 @@ def review_translation(
             "target_lines": target_lines,
         }
         
+        # tasks.md 업데이트 (검토 완료)
+        if tasks_path and task_id:
+            from agents.task_planner import update_task_status
+            update_task_status(tasks_path, task_id, status="completed")
+        
+        return result
+        
     except Exception as e:
+        # tasks.md 업데이트 (검토 실패)
+        if tasks_path and task_id:
+            from agents.task_planner import update_task_status
+            update_task_status(tasks_path, task_id, status="not_started")
+        
         return {
             "file": target_path,
             "score": 0,
@@ -187,6 +208,7 @@ def run_reviewer_agent(
 def review_all_translations(
     source_files: list,
     target_lang: str,
+    tasks_path: str = None,
 ) -> dict:
     """
     모든 번역 파일의 품질을 검토합니다.
@@ -194,6 +216,7 @@ def review_all_translations(
     Args:
         source_files: 원본 파일 목록
         target_lang: 타겟 언어 코드
+        tasks_path: tasks.md 파일 경로 (선택)
     
     Returns:
         dict: 전체 검토 결과
@@ -203,11 +226,20 @@ def review_all_translations(
     pass_count = 0
     fail_count = 0
     
-    for source_path in source_files:
+    for i, source_path in enumerate(source_files):
         target_path = source_path.replace(".en.md", f".{target_lang}.md")
         
+        # tasks.md의 검토 태스크 ID (예: "4.1", "4.2", ...)
+        task_id = f"4.{i+1}" if tasks_path else None
+        
         if os.path.exists(target_path):
-            result = review_translation(source_path, target_path, target_lang)
+            result = review_translation(
+                source_path, 
+                target_path, 
+                target_lang,
+                tasks_path=tasks_path,
+                task_id=task_id
+            )
             results.append(result)
             total_score += result["score"]
             

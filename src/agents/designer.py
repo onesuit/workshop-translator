@@ -118,17 +118,39 @@ def generate_design(
             - target_lang: 타겟 언어
             - file_count: 파일 수
     """
+    # 언어 이름 매핑
+    lang_names = {
+        "ko": "한국어",
+        "ja": "日本語",
+        "zh": "中文",
+        "es": "Español",
+        "fr": "Français",
+        "de": "Deutsch",
+        "pt": "Português",
+    }
+    target_lang_name = lang_names.get(target_lang, target_lang.upper())
+    
+    # 노력 추정 계산
+    if file_count <= 5:
+        effort_estimate = "Quick (<1h)"
+    elif file_count <= 20:
+        effort_estimate = "Short (1-4h)"
+    elif file_count <= 50:
+        effort_estimate = "Medium (1-2d)"
+    else:
+        effort_estimate = "Long (>2d)"
+    
     # Agent 생성 및 실행
     agent = create_designer_agent()
     
     # 출력 경로 설정
     if output_path is None:
-        output_path = os.path.join(workshop_path, ".kiro", "specs", "translation", "design.md")
+        output_path = os.path.join(workshop_path, "translation", "design.md")
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
     # requirements.md 경로
-    requirements_path = os.path.join(workshop_path, ".kiro", "specs", "translation", "requirements.md")
+    requirements_path = os.path.join(workshop_path, "translation", "requirements.md")
     
     # Agent에게 Design 문서 생성 요청
     prompt = f"""

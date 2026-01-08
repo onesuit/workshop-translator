@@ -101,16 +101,7 @@ def translate_file(
 """
         
         response = agent(prompt)
-        translated_content = str(response)
-        
-        # 코드 블록 마커 제거 (에이전트가 추가했을 경우)
-        if translated_content.startswith("```markdown"):
-            translated_content = translated_content[11:]
-        if translated_content.startswith("```"):
-            translated_content = translated_content[3:]
-        if translated_content.endswith("```"):
-            translated_content = translated_content[:-3]
-        translated_content = translated_content.strip()
+        translated_content = str(response).strip()
         
         # 번역 파일 저장
         target_path = write_translated_file(source_path, translated_content, target_lang, source_lang)

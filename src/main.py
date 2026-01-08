@@ -128,14 +128,8 @@ def run_cli():
                 print("\n감사합니다. 안녕히 가세요!")
                 break
             
-            print("\n에이전트: ", end="", flush=True)
-            
-            # 에이전트 실행
+            # 에이전트 실행 (Strands가 자동으로 스트리밍 출력)
             response = agent(user_input)
-            
-            # 응답이 스트리밍되지 않은 경우 출력
-            if not hasattr(response, '__iter__'):
-                print(str(response))
                 
         except KeyboardInterrupt:
             print("\n\n중단되었습니다.")

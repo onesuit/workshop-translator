@@ -118,7 +118,7 @@ def generate_tasks(
     
     # 파일 저장
     if output_path is None:
-        output_path = os.path.join(workshop_path, ".kiro", "specs", "translation", "tasks.md")
+        output_path = os.path.join(workshop_path, "translation", "tasks.md")
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     

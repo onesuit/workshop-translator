@@ -109,6 +109,8 @@ def validate_markdown_syntax(content: str) -> dict:
 def validate_structure(
     source_files: list,
     target_lang: str,
+    tasks_path: str = None,
+    task_id: str = None,
 ) -> dict:
     """
     번역된 파일들의 구조를 검증합니다.
@@ -119,6 +121,8 @@ def validate_structure(
     Args:
         source_files: 원본 파일 목록
         target_lang: 타겟 언어 코드
+        tasks_path: tasks.md 파일 경로 (선택)
+        task_id: 태스크 ID (선택, tasks.md 업데이트용)
     
     Returns:
         dict: 검증 결과
@@ -131,6 +135,11 @@ def validate_structure(
             - error_count: 오류 수
             - warning_count: 경고 수
     """
+    # tasks.md 업데이트 (검증 시작)
+    if tasks_path and task_id:
+        from agents.task_planner import update_task_status
+        update_task_status(tasks_path, task_id, status="in_progress")
+    
     errors = []
     warnings = []
     translated_count = 0
@@ -182,7 +191,7 @@ def validate_structure(
     
     status = "PASS" if len(errors) == 0 and coverage == 100 else "FAIL"
     
-    return {
+    result = {
         "status": status,
         "coverage": f"{translated_count}/{total_files} files ({coverage:.1f}%)",
         "coverage_percent": round(coverage, 2),
@@ -192,6 +201,13 @@ def validate_structure(
         "error_count": len(errors),
         "warning_count": len(warnings),
     }
+    
+    # tasks.md 업데이트 (검증 완료)
+    if tasks_path and task_id:
+        from agents.task_planner import update_task_status
+        update_task_status(tasks_path, task_id, status="completed")
+    
+    return result
 
 
 def run_validator_agent(
