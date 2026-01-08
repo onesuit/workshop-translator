@@ -39,3 +39,13 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# AWS Bedrock AgentCore
+.bedrock_agentcore.yaml
+.bedrock_agentcore/
+
+# Test files (backup)
+test/cli_remote_backup.py
+
+# Lock files (optional - 팀 정책에 따라 조정)
+# uv.lock
