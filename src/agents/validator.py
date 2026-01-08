@@ -13,6 +13,23 @@ from tools.file_tools import (
 )
 
 
+def create_validator_agent() -> Agent:
+    """
+    Validator 에이전트 인스턴스를 생성합니다.
+    
+    Agent는 다음 도구들을 사용할 수 있습니다:
+    - file_read: 파일 내용 읽기 (strands 기본 도구)
+    
+    Returns:
+        Agent: Validator 에이전트 인스턴스
+    """
+    return Agent(
+        model=load_haiku(),
+        system_prompt=VALIDATOR_PROMPT,
+        tools=[file_read],
+    )
+
+
 def validate_frontmatter(content: str) -> dict:
     """
     Frontmatter를 검증합니다.
@@ -96,6 +113,9 @@ def validate_structure(
     """
     번역된 파일들의 구조를 검증합니다.
     
+    이 도구는 Orchestrator가 호출하며, 내부에서 Validator Agent를 실행합니다.
+    Agent는 LLM을 사용하여 번역 파일의 구조적 정확성을 확인합니다.
+    
     Args:
         source_files: 원본 파일 목록
         target_lang: 타겟 언어 코드
@@ -104,8 +124,12 @@ def validate_structure(
         dict: 검증 결과
             - status: PASS/FAIL
             - coverage: 번역 커버리지
+            - coverage_percent: 커버리지 퍼센트
+            - line_diff_avg: 평균 줄 수 차이
             - errors: 오류 목록
             - warnings: 경고 목록
+            - error_count: 오류 수
+            - warning_count: 경고 수
     """
     errors = []
     warnings = []

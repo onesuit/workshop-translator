@@ -8,6 +8,24 @@ from model.load import load_sonnet
 from prompts.system_prompts import DESIGNER_PROMPT
 
 
+def create_designer_agent() -> Agent:
+    """
+    Designer 에이전트 인스턴스를 생성합니다.
+    
+    Agent는 다음 도구들을 사용할 수 있습니다:
+    - file_read: 파일 내용 읽기 (strands 기본 도구)
+    - file_write: 파일 쓰기 (strands 기본 도구)
+    
+    Returns:
+        Agent: Designer 에이전트 인스턴스
+    """
+    return Agent(
+        model=load_sonnet(),
+        system_prompt=DESIGNER_PROMPT,
+        tools=[file_read, file_write],
+    )
+
+
 # Design 문서 템플릿
 DESIGN_TEMPLATE = """# Design Document
 
@@ -83,6 +101,9 @@ def generate_design(
     """
     Design 문서를 생성합니다.
     
+    이 도구는 Orchestrator가 호출하며, 내부에서 Designer Agent를 실행합니다.
+    Agent는 LLM을 사용하여 번역 프로젝트의 설계 문서를 생성합니다.
+    
     Args:
         workshop_path: Workshop 디렉토리 경로
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
@@ -93,97 +114,82 @@ def generate_design(
         dict: 생성 결과
             - content: Design 문서 내용
             - output_path: 저장된 파일 경로
+            - target_lang: 타겟 언어
+            - file_count: 파일 수
     """
-    # 언어 이름 매핑
-    lang_names = {
-        "ko": "한국어",
-        "ja": "日本語",
-        "zh": "中文",
-        "es": "Español",
-        "fr": "Français",
-        "de": "Deutsch",
-        "pt": "Português",
-    }
-    target_lang_name = lang_names.get(target_lang, target_lang)
+    # Agent 생성 및 실행
+    agent = create_designer_agent()
     
-    # 노력 추정
-    if file_count <= 10:
-        effort_estimate = "Short (1-4h)"
-    elif file_count <= 30:
-        effort_estimate = "Medium (1-2d)"
-    else:
-        effort_estimate = "Large (3d+)"
-    
-    # Design 문서 생성
-    content = DESIGN_TEMPLATE.format(
-        workshop_path=workshop_path,
-        file_count=file_count,
-        target_lang=target_lang,
-        target_lang_name=target_lang_name,
-        effort_estimate=effort_estimate,
-    )
-    
-    # 파일 저장
+    # 출력 경로 설정
     if output_path is None:
         output_path = os.path.join(workshop_path, ".kiro", "specs", "translation", "design.md")
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    
-    return {
-        "content": content,
-        "output_path": output_path,
-        "target_lang": target_lang,
-        "file_count": file_count,
-    }
+    # Agent에게 Design 문서 생성 요청
+    prompt = f"""
+Design 문서를 생성해주세요.
 
+**Workshop 경로**: {workshop_path}
+**타겟 언어**: {target_lang} ({target_lang_name})
+**번역 대상 파일 수**: {file_count}개
+**노력 추정**: {effort_estimate}
 
-def run_designer_agent(
-    workshop_path: str,
-    target_lang: str,
-    file_count: int,
-    files: list[str],
-    requirements_path: str = None
-) -> dict:
-    """
-    Designer 에이전트를 실행하여 더 상세한 Design 문서를 생성합니다.
+DESIGNER_PROMPT에 명시된 형식으로 Design 문서를 작성하고,
+{output_path} 경로에 저장해주세요.
+
+반드시 다음 섹션을 포함하세요:
+1. Overview
+2. Architecture (Mermaid 다이어그램)
+3. File Structure Design
+4. Technical Term Glossary
+5. Translation Rules
+6. Testing Strategy
+"""
     
-    Args:
-        workshop_path: Workshop 디렉토리 경로
-        target_lang: 타겟 언어 코드
-        file_count: 번역 대상 파일 수
-        files: 파일 목록
-        requirements_path: requirements.md 경로 (선택)
-    
-    Returns:
-        dict: 생성 결과
-    """
-    # 기본 템플릿으로 생성
-    result = generate_design(workshop_path, target_lang, file_count)
-    
-    # requirements.md가 있으면 에이전트로 보강
-    if requirements_path and os.path.exists(requirements_path):
-        agent = Agent(
-            model=load_sonnet(),
-            system_prompt=DESIGNER_PROMPT,
-            tools=[file_read, file_write],
-        )
-        
-        prompt = f"""
-        requirements.md를 참고하여 Design 문서를 보강해주세요.
-        
-        Requirements 경로: {requirements_path}
-        Workshop 경로: {workshop_path}
-        타겟 언어: {target_lang}
-        파일 수: {file_count}
-        
-        기존 Design 문서:
-        {result['content']}
-        """
-        
+    try:
         response = agent(prompt)
-        result["agent_response"] = str(response)
-    
-    return result
+        
+        # 생성된 파일 읽기
+        if os.path.exists(output_path):
+            with open(output_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        else:
+            # Agent가 파일을 생성하지 않은 경우 템플릿 사용
+            content = DESIGN_TEMPLATE.format(
+                workshop_path=workshop_path,
+                file_count=file_count,
+                target_lang=target_lang,
+                target_lang_name=target_lang_name,
+                effort_estimate=effort_estimate,
+            )
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        
+        return {
+            "content": content,
+            "output_path": output_path,
+            "target_lang": target_lang,
+            "file_count": file_count,
+            "agent_response": str(response),
+        }
+        
+    except Exception as e:
+        # 에러 발생 시 템플릿 사용
+        content = DESIGN_TEMPLATE.format(
+            workshop_path=workshop_path,
+            file_count=file_count,
+            target_lang=target_lang,
+            target_lang_name=target_lang_name,
+            effort_estimate=effort_estimate,
+        )
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        return {
+            "content": content,
+            "output_path": output_path,
+            "target_lang": target_lang,
+            "file_count": file_count,
+            "error": str(e),
+        }

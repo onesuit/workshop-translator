@@ -13,6 +13,22 @@ from tools.file_tools import (
 )
 
 
+def create_translator_agent() -> Agent:
+    """
+    Translator 에이전트 인스턴스를 생성합니다.
+    
+    Agent는 번역 작업만 수행하므로 추가 도구가 필요하지 않습니다.
+    
+    Returns:
+        Agent: Translator 에이전트 인스턴스
+    """
+    return Agent(
+        model=load_sonnet(),
+        system_prompt=TRANSLATOR_PROMPT,
+        tools=[],  # 번역에는 추가 도구 불필요
+    )
+
+
 @tool
 def translate_file(
     source_path: str,
@@ -21,6 +37,15 @@ def translate_file(
 ) -> dict:
     """
     단일 파일을 번역합니다.
+    
+    이 도구는 Orchestrator가 단일 파일 번역이 필요할 때 직접 호출하거나,
+    translate_files_parallel 내부에서 각 파일을 번역할 때 사용됩니다.
+    내부에서 Translator Agent를 실행하여 AWS Workshop 콘텐츠를 번역합니다.
+    
+    **사용 시나리오**:
+    - Orchestrator가 특정 파일 하나만 번역하고 싶을 때
+    - 번역 실패한 파일을 재시도할 때
+    - translate_files_parallel 내부에서 각 파일 처리 시
     
     Args:
         source_path: 원본 파일 경로 (.{source_lang}.md)
@@ -32,18 +57,16 @@ def translate_file(
             - source_path: 원본 파일 경로
             - target_path: 번역 파일 경로
             - success: 성공 여부
+            - source_lines: 원본 줄 수
+            - target_lines: 번역 줄 수
             - error: 에러 메시지 (실패 시)
     """
     try:
         # 원본 파일 읽기
         source_content = read_workshop_file(source_path)
         
-        # 에이전트로 번역
-        agent = Agent(
-            model=load_sonnet(),
-            system_prompt=TRANSLATOR_PROMPT,
-            tools=[],  # 번역에는 도구 불필요
-        )
+        # Agent 생성 및 번역 실행
+        agent = create_translator_agent()
         
         # 언어 이름 매핑
         lang_names = {
@@ -122,6 +145,24 @@ def translate_files_parallel(
     """
     여러 파일을 병렬로 번역합니다.
     
+    이 도구는 Orchestrator가 다중 파일 번역이 필요할 때 호출합니다.
+    Threading과 Semaphore를 사용하여 여러 파일을 동시에 번역하며,
+    각 스레드에서 독립적으로 Translator Agent를 실행합니다.
+    
+    **translate_file과의 차이점**:
+    - translate_file: 단일 파일 번역 (동기 실행, 즉시 결과 반환)
+    - translate_files_parallel: 다중 파일 병렬 번역 (비동기 실행, 백그라운드 처리)
+    
+    **사용 시나리오**:
+    - Workshop 전체 파일을 한 번에 번역할 때
+    - 10개 이상의 파일을 효율적으로 처리할 때
+    - 백그라운드에서 번역을 진행하고 다른 작업을 계속할 때
+    
+    **워크플로우**:
+    1. 이 도구 호출 → 백그라운드 스레드 시작 → 즉시 반환
+    2. check_background_tasks로 진행 상황 확인
+    3. tasks.md 파일에서 완료 상태 추적
+    
     Args:
         files: 번역 대상 파일 목록 (최대 10개 권장)
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
@@ -130,9 +171,10 @@ def translate_files_parallel(
         max_concurrent: 최대 동시 실행 수 (기본: 5)
     
     Returns:
-        dict: 번역 시작 결과
+        dict: 번역 시작 결과 (즉시 반환)
             - status: "started"
             - total: 전체 파일 수
+            - max_concurrent: 최대 동시 실행 수
             - tasks: 시작된 태스크 정보 목록
             - message: 상태 메시지
     """
@@ -144,6 +186,28 @@ def translate_files_parallel(
     semaphore = threading.Semaphore(max_concurrent)
     started_tasks = []
     
+    def translate_worker(file_path: str, task_id: str, internal_task_id: str):
+        """
+        백그라운드 번역 작업을 수행하는 워커 함수.
+        각 워커는 독립적으로 Translator Agent를 생성하고 실행합니다.
+        """
+        with semaphore:  # 최대 max_concurrent개만 동시 실행
+            try:
+                # translate_file 도구 함수 호출 (내부에서 Agent 생성 및 실행)
+                result = translate_file(file_path, target_lang, source_lang)
+                
+                # 성공 시 tasks.md 업데이트
+                if result.get("success"):
+                    update_task_status(tasks_path, task_id, completed=True)
+                
+            except Exception as e:
+                print(f"번역 실패 ({file_path}): {e}")
+            
+            finally:
+                # AgentCore 태스크 완료 표시
+                app.complete_async_task(internal_task_id)
+    
+    # 각 파일에 대해 백그라운드 스레드 시작
     for i, file_path in enumerate(files):
         # tasks.md의 태스크 ID 생성 (예: "2.1", "2.2", ...)
         task_id = f"2.{i+1}"
@@ -155,28 +219,10 @@ def translate_files_parallel(
             "target_lang": target_lang
         })
         
-        def translate_worker(path, tid, itid, tlang, slang, tpath):
-            """백그라운드 번역 작업"""
-            with semaphore:  # 최대 max_concurrent개만 동시 실행
-                try:
-                    # 번역 실행
-                    result = translate_file(path, tlang, slang)
-                    
-                    # 성공 시 tasks.md 업데이트
-                    if result["success"]:
-                        update_task_status(tpath, tid, completed=True)
-                    
-                except Exception as e:
-                    print(f"번역 실패 ({path}): {e}")
-                
-                finally:
-                    # AgentCore 태스크 완료 표시
-                    app.complete_async_task(itid)
-        
         # 백그라운드 스레드 시작
         threading.Thread(
             target=translate_worker,
-            args=(file_path, task_id, internal_task_id, target_lang, source_lang, tasks_path),
+            args=(file_path, task_id, internal_task_id),
             daemon=True
         ).start()
         
@@ -200,11 +246,20 @@ def check_background_tasks() -> dict:
     """
     백그라운드 번역 작업 상태를 확인합니다.
     
+    이 도구는 translate_files_parallel로 시작한 백그라운드 번역 작업의
+    진행 상황을 확인할 때 사용합니다.
+    
+    **사용 시나리오**:
+    - translate_files_parallel 호출 후 진행 상황 모니터링
+    - 모든 번역이 완료되었는지 확인
+    - 실행 중인 작업 수 파악
+    
     Returns:
         dict: 작업 상태 정보
-            - status: "busy" 또는 "idle"
+            - status: "busy" (작업 중) 또는 "idle" (모든 작업 완료)
             - running_tasks: 실행 중인 태스크 수
             - tasks: 태스크 상세 정보 목록
+            - message: 상태 메시지
     """
     # 순환 import 방지를 위해 함수 내부에서 import
     from main import app

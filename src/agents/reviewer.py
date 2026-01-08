@@ -9,6 +9,23 @@ from prompts.system_prompts import REVIEWER_PROMPT
 from tools.file_tools import read_workshop_file
 
 
+def create_reviewer_agent() -> Agent:
+    """
+    Reviewer 에이전트 인스턴스를 생성합니다.
+    
+    Agent는 다음 도구들을 사용할 수 있습니다:
+    - file_read: 파일 내용 읽기 (strands 기본 도구)
+    
+    Returns:
+        Agent: Reviewer 에이전트 인스턴스
+    """
+    return Agent(
+        model=load_sonnet(),
+        system_prompt=REVIEWER_PROMPT,
+        tools=[file_read],
+    )
+
+
 @tool
 def review_translation(
     source_path: str,
@@ -17,6 +34,9 @@ def review_translation(
 ) -> dict:
     """
     번역 품질을 검토합니다.
+    
+    이 도구는 Orchestrator가 호출하며, 내부에서 Reviewer Agent를 실행합니다.
+    Agent는 LLM을 사용하여 번역 품질을 평가하고 구체적인 피드백을 제공합니다.
     
     Args:
         source_path: 원본 파일 경로
@@ -30,6 +50,9 @@ def review_translation(
             - status: PASS/FAIL
             - issues: 발견된 문제 목록
             - summary: 요약
+            - line_diff_percent: 줄 수 차이 비율
+            - source_lines: 원본 줄 수
+            - target_lines: 번역 줄 수
     """
     try:
         # 파일 읽기

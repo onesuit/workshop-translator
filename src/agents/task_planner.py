@@ -8,6 +8,24 @@ from model.load import load_sonnet
 from prompts.system_prompts import TASK_PLANNER_PROMPT
 
 
+def create_task_planner_agent() -> Agent:
+    """
+    TaskPlanner 에이전트 인스턴스를 생성합니다.
+    
+    Agent는 다음 도구들을 사용할 수 있습니다:
+    - file_read: 파일 내용 읽기 (strands 기본 도구)
+    - file_write: 파일 쓰기 (strands 기본 도구)
+    
+    Returns:
+        Agent: TaskPlanner 에이전트 인스턴스
+    """
+    return Agent(
+        model=load_sonnet(),
+        system_prompt=TASK_PLANNER_PROMPT,
+        tools=[file_read, file_write],
+    )
+
+
 @tool
 def generate_tasks(
     workshop_path: str,
@@ -17,6 +35,9 @@ def generate_tasks(
 ) -> dict:
     """
     Tasks 문서를 생성합니다.
+    
+    이 도구는 Orchestrator가 호출하며, 내부에서 TaskPlanner Agent를 실행합니다.
+    Agent는 LLM을 사용하여 번역 작업을 실행 가능한 태스크로 분해합니다.
     
     Args:
         workshop_path: Workshop 디렉토리 경로
@@ -29,6 +50,7 @@ def generate_tasks(
             - content: Tasks 문서 내용
             - output_path: 저장된 파일 경로
             - task_count: 태스크 수
+            - file_count: 파일 수
     """
     # Tasks 문서 생성
     lines = [
