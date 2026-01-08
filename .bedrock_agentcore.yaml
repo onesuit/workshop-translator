@@ -4,19 +4,19 @@ agents:
     name: WsTranslator_Agent
     entrypoint: /Users/jsbang/Documents/workshop-translator/WsTranslator/src/main.py
     deployment_type: direct_code_deploy
-    runtime_type: PYTHON_3_10
-    platform: linux/amd64
+    runtime_type: PYTHON_3_13
+    platform: linux/arm64
     container_runtime: null
     source_path: /Users/jsbang/Documents/workshop-translator/WsTranslator/src
     aws:
-      execution_role: null
+      execution_role: arn:aws:iam::287870618970:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-dae93547eb
       execution_role_auto_create: true
-      account: null
-      region: null
+      account: '287870618970'
+      region: us-east-1
       ecr_repository: null
       ecr_auto_create: false
-      s3_path: null
-      s3_auto_create: true
+      s3_path: s3://bedrock-agentcore-codebuild-sources-287870618970-us-east-1
+      s3_auto_create: false
       network_configuration:
         network_mode: PUBLIC
         network_mode_config: null
@@ -37,8 +37,12 @@ agents:
       source_bucket: null
     memory:
       mode: STM_AND_LTM
+      memory_id: WsTranslator-684NN3GG3O
+      memory_arn: null
       memory_name: WsTranslator_Memory
       event_expiry_days: 30
+      first_invoke_memory_check_done: false
+      was_created_by_toolkit: false
     identity:
       credential_providers: []
       workload: null

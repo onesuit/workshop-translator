@@ -17,13 +17,15 @@ from tools.file_tools import (
 def translate_file(
     source_path: str,
     target_lang: str,
+    source_lang: str = "en",
 ) -> dict:
     """
     단일 파일을 번역합니다.
     
     Args:
-        source_path: 원본 파일 경로 (.en.md)
+        source_path: 원본 파일 경로 (.{source_lang}.md)
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
+        source_lang: 소스 언어 코드 (기본: en)
     
     Returns:
         dict: 번역 결과
@@ -45,6 +47,7 @@ def translate_file(
         
         # 언어 이름 매핑
         lang_names = {
+            "en": "English",
             "ko": "한국어",
             "ja": "日本語",
             "zh": "中文",
@@ -53,10 +56,11 @@ def translate_file(
             "de": "Deutsch",
             "pt": "Português",
         }
+        source_lang_name = lang_names.get(source_lang, source_lang)
         target_lang_name = lang_names.get(target_lang, target_lang)
         
         prompt = f"""
-다음 Markdown 파일을 {target_lang_name}({target_lang})로 번역해주세요.
+다음 Markdown 파일을 {source_lang_name}({source_lang})에서 {target_lang_name}({target_lang})로 번역해주세요.
 
 ## 번역 규칙
 1. AWS 서비스명은 영어 유지 (Amazon SES, AWS Lambda 등)
@@ -86,11 +90,13 @@ def translate_file(
         translated_content = translated_content.strip()
         
         # 번역 파일 저장
-        target_path = write_translated_file(source_path, translated_content, target_lang)
+        target_path = write_translated_file(source_path, translated_content, target_lang, source_lang)
         
         return {
             "source_path": source_path,
             "target_path": target_path,
+            "source_lang": source_lang,
+            "target_lang": target_lang,
             "success": True,
             "source_lines": len(source_content.split("\n")),
             "target_lines": len(translated_content.split("\n")),
@@ -131,6 +137,7 @@ async def translate_file_async(
 def translate_files_parallel(
     files: list,
     target_lang: str,
+    source_lang: str = "en",
     max_concurrent: int = 5,
 ) -> dict:
     """
@@ -139,6 +146,7 @@ def translate_files_parallel(
     Args:
         files: 번역 대상 파일 목록
         target_lang: 타겟 언어 코드
+        source_lang: 소스 언어 코드 (기본: en)
         max_concurrent: 최대 동시 실행 수 (기본: 5)
     
     Returns:
@@ -155,7 +163,7 @@ def translate_files_parallel(
     # 동기 방식으로 순차 처리 (안정성 우선)
     # TODO: asyncio로 병렬 처리 구현
     for file_path in files:
-        result = translate_file(file_path, target_lang)
+        result = translate_file(file_path, target_lang, source_lang)
         results.append(result)
         
         if result["success"]:
@@ -167,6 +175,8 @@ def translate_files_parallel(
         "total": len(files),
         "success": success_count,
         "failed": failed_count,
+        "source_lang": source_lang,
+        "target_lang": target_lang,
         "results": results,
     }
 

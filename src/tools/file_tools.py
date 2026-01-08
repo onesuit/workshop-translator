@@ -1,9 +1,13 @@
 # 파일 처리 도구
 import os
 import glob
+import re
 import yaml
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+
+# 지원하는 언어 코드 목록
+SUPPORTED_LANG_CODES = ["en", "ko", "ja", "zh", "es", "fr", "de", "pt", "it", "ru"]
 
 
 def read_workshop_file(file_path: str) -> str:
@@ -20,25 +24,47 @@ def read_workshop_file(file_path: str) -> str:
         return f.read()
 
 
+def extract_lang_from_filename(filename: str) -> Optional[str]:
+    """
+    파일명에서 언어 코드를 추출합니다.
+    예: index.en.md → en, index.ko.md → ko
+    
+    Args:
+        filename: 파일명
+    
+    Returns:
+        str: 언어 코드 (없으면 None)
+    """
+    # .{lang}.md 패턴 매칭
+    match = re.search(r'\.([a-z]{2})\.md$', filename)
+    if match:
+        lang = match.group(1)
+        if lang in SUPPORTED_LANG_CODES:
+            return lang
+    return None
+
+
 def write_translated_file(
     source_path: str, 
     content: str, 
-    target_lang: str
+    target_lang: str,
+    source_lang: str = "en"
 ) -> str:
     """
     번역된 파일을 저장합니다.
-    .en.md → .{target_lang}.md 형식으로 저장
+    .{source_lang}.md → .{target_lang}.md 형식으로 저장
     
     Args:
-        source_path: 원본 파일 경로 (.en.md)
+        source_path: 원본 파일 경로
         content: 번역된 내용
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
+        source_lang: 소스 언어 코드 (기본: en)
     
     Returns:
         str: 저장된 파일 경로
     """
-    # .en.md → .{target_lang}.md
-    target_path = source_path.replace(".en.md", f".{target_lang}.md")
+    # .{source_lang}.md → .{target_lang}.md
+    target_path = source_path.replace(f".{source_lang}.md", f".{target_lang}.md")
     
     # 디렉토리 생성 (필요시)
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -49,16 +75,16 @@ def write_translated_file(
     return target_path
 
 
-def list_workshop_files(workshop_path: str, pattern: str = "**/*.en.md") -> list[str]:
+def detect_source_language(workshop_path: str) -> Tuple[str, list[str]]:
     """
-    Workshop 디렉토리에서 번역 대상 파일 목록을 반환합니다.
+    Workshop에서 소스 언어를 자동 감지합니다.
+    .en.md 우선, 없으면 다른 언어 파일 탐색
     
     Args:
         workshop_path: Workshop 루트 경로
-        pattern: glob 패턴 (기본: **/*.en.md)
     
     Returns:
-        list[str]: 파일 경로 목록
+        Tuple[str, list[str]]: (소스 언어 코드, 파일 목록)
     """
     content_path = os.path.join(workshop_path, "content")
     if os.path.exists(content_path):
@@ -66,8 +92,59 @@ def list_workshop_files(workshop_path: str, pattern: str = "**/*.en.md") -> list
     else:
         search_path = workshop_path
     
+    # 1. 먼저 .en.md 파일 탐색
+    en_files = glob.glob(os.path.join(search_path, "**/*.en.md"), recursive=True)
+    if en_files:
+        return "en", sorted(en_files)
+    
+    # 2. .en.md가 없으면 다른 언어 파일 탐색
+    for lang in SUPPORTED_LANG_CODES:
+        if lang == "en":
+            continue
+        pattern = f"**/*.{lang}.md"
+        files = glob.glob(os.path.join(search_path, pattern), recursive=True)
+        if files:
+            return lang, sorted(files)
+    
+    # 3. 언어 코드 없는 .md 파일도 확인 (기본 언어로 간주)
+    md_files = glob.glob(os.path.join(search_path, "**/*.md"), recursive=True)
+    # 언어 코드가 있는 파일 제외
+    plain_md_files = [f for f in md_files if not extract_lang_from_filename(f)]
+    if plain_md_files:
+        return "unknown", sorted(plain_md_files)
+    
+    return "none", []
+
+
+def list_workshop_files(
+    workshop_path: str, 
+    source_lang: str = None
+) -> Tuple[str, list[str]]:
+    """
+    Workshop 디렉토리에서 번역 대상 파일 목록을 반환합니다.
+    소스 언어를 자동 감지하거나 지정할 수 있습니다.
+    
+    Args:
+        workshop_path: Workshop 루트 경로
+        source_lang: 소스 언어 코드 (None이면 자동 감지)
+    
+    Returns:
+        Tuple[str, list[str]]: (소스 언어 코드, 파일 경로 목록)
+    """
+    content_path = os.path.join(workshop_path, "content")
+    if os.path.exists(content_path):
+        search_path = content_path
+    else:
+        search_path = workshop_path
+    
+    # 소스 언어가 지정되지 않으면 자동 감지
+    if source_lang is None:
+        return detect_source_language(workshop_path)
+    
+    # 소스 언어가 지정된 경우 해당 패턴으로 탐색
+    pattern = f"**/*.{source_lang}.md"
     files = glob.glob(os.path.join(search_path, pattern), recursive=True)
-    return sorted(files)
+    return source_lang, sorted(files)
 
 
 def read_contentspec(workshop_path: str) -> Optional[dict]:
