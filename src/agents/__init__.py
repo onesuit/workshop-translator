@@ -5,7 +5,7 @@ from .analyzer import analyze_workshop
 from .designer import generate_design
 from .task_planner import generate_tasks
 from .translator import translate_file, translate_files_parallel
-from .reviewer import review_translation
+from .reviewer import review_file, review_files_parallel, review_all_translations
 from .validator import validate_structure
 
 __all__ = [
@@ -14,6 +14,8 @@ __all__ = [
     "generate_tasks",
     "translate_file",
     "translate_files_parallel",
-    "review_translation",
+    "review_file",
+    "review_files_parallel",
+    "review_all_translations",
     "validate_structure",
 ]
