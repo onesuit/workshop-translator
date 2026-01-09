@@ -129,6 +129,20 @@ def translate_file(
         response = agent(prompt)
         translated_content = str(response).strip()
         
+        # Agent 응답에서 실제 번역 내용만 추출
+        # Agent가 설명을 포함할 수 있으므로 Markdown 시작 부분 찾기
+        if translated_content.startswith("---"):
+            # Frontmatter로 시작하면 그대로 사용
+            pass
+        elif "---" in translated_content:
+            # 응답 중간에 Frontmatter가 있으면 그 부분부터 추출
+            start_idx = translated_content.find("---")
+            translated_content = translated_content[start_idx:]
+        
+        # 빈 내용 체크
+        if not translated_content or len(translated_content) < 10:
+            raise ValueError(f"번역 결과가 비어있거나 너무 짧습니다 (길이: {len(translated_content)})")
+        
         # 번역 파일 저장
         target_path = write_translated_file(source_path, translated_content, target_lang, source_lang)
         
