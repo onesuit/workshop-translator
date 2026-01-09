@@ -2,10 +2,15 @@
 # 체크박스 형식의 실행 가능한 태스크 목록 생성
 
 import os
+import re
+import threading
 from strands import Agent, tool
 from strands_tools import file_read, file_write
 from model.load import load_sonnet
 from prompts.system_prompts import TASK_PLANNER_PROMPT
+
+# tasks.md 파일 접근을 위한 Lock (동시 편집 방지)
+_tasks_lock = threading.Lock()
 
 
 def create_task_planner_agent() -> Agent:
@@ -150,69 +155,70 @@ def update_task_status(tasks_path: str, task_id: str, status: str = "completed")
     Returns:
         bool: 업데이트 성공 여부
     """
-    if not os.path.exists(tasks_path):
-        return False
-    
-    with open(tasks_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    # 현재 상태 찾기
-    current_patterns = [
-        f"- [ ] {task_id}",
-        f"- [~] {task_id}",
-        f"- [x] {task_id}",
-    ]
-    
-    current_pattern = None
-    for pattern in current_patterns:
-        if pattern in content:
-            current_pattern = pattern
-            break
-    
-    if current_pattern is None:
-        return False
-    
-    # 새 상태 결정
-    if status == "in_progress":
-        new_pattern = f"- [~] {task_id}"
-    elif status == "completed":
-        new_pattern = f"- [x] {task_id}"
-    elif status == "not_started":
-        new_pattern = f"- [ ] {task_id}"
-    else:
-        return False
-    
-    # 상태 변경
-    content = content.replace(current_pattern, new_pattern, 1)
-    
-    # 진행률 업데이트
-    completed_count = content.count("- [x]")
-    in_progress_count = content.count("- [~]")
-    not_started_count = content.count("- [ ]")
-    total_count = completed_count + in_progress_count + not_started_count
-    
-    if total_count > 0:
-        progress = int(completed_count / total_count * 100)
+    # Lock을 사용하여 동시 편집 방지
+    with _tasks_lock:
+        if not os.path.exists(tasks_path):
+            return False
         
-        # 진행 상황 섹션 업데이트
-        import re
-        content = re.sub(
-            r"- 완료: \d+개",
-            f"- 완료: {completed_count}개",
-            content
-        )
-        content = re.sub(
-            r"- 진행 중: \d+개",
-            f"- 진행 중: {in_progress_count}개",
-            content
-        )
-        content = re.sub(
-            r"- 진행률: \d+%",
-            f"- 진행률: {progress}%",
-            content
-        )
-    
-    with open(tasks_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    
-    return True
+        with open(tasks_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # 현재 상태 찾기
+        current_patterns = [
+            f"- [ ] {task_id}",
+            f"- [~] {task_id}",
+            f"- [x] {task_id}",
+        ]
+        
+        current_pattern = None
+        for pattern in current_patterns:
+            if pattern in content:
+                current_pattern = pattern
+                break
+        
+        if current_pattern is None:
+            return False
+        
+        # 새 상태 결정
+        if status == "in_progress":
+            new_pattern = f"- [~] {task_id}"
+        elif status == "completed":
+            new_pattern = f"- [x] {task_id}"
+        elif status == "not_started":
+            new_pattern = f"- [ ] {task_id}"
+        else:
+            return False
+        
+        # 상태 변경
+        content = content.replace(current_pattern, new_pattern, 1)
+        
+        # 진행률 업데이트
+        completed_count = content.count("- [x]")
+        in_progress_count = content.count("- [~]")
+        not_started_count = content.count("- [ ]")
+        total_count = completed_count + in_progress_count + not_started_count
+        
+        if total_count > 0:
+            progress = int(completed_count / total_count * 100)
+            
+            # 진행 상황 섹션 업데이트
+            content = re.sub(
+                r"- 완료: \d+개",
+                f"- 완료: {completed_count}개",
+                content
+            )
+            content = re.sub(
+                r"- 진행 중: \d+개",
+                f"- 진행 중: {in_progress_count}개",
+                content
+            )
+            content = re.sub(
+                r"- 진행률: \d+%",
+                f"- 진행률: {progress}%",
+                content
+            )
+        
+        with open(tasks_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        return True
