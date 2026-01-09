@@ -148,6 +148,11 @@ def review_file(
         source_content = read_workshop_file(source_path)
         target_content = read_workshop_file(target_path)
         
+        # tasks.md 상태 업데이트: 진행 중으로 변경
+        if tasks_path and task_id:
+            from agents.task_planner import update_task_status
+            update_task_status(tasks_path, task_id, "in_progress")
+        
         # 기본 검토 수행
         basic_result = basic_review_checks(source_path, target_path, source_content, target_content)
         
@@ -257,6 +262,11 @@ def review_file(
         elif "PASS" in agent_feedback.upper():
             status = "PASS"
         
+        # tasks.md 상태 업데이트: 완료로 변경
+        if tasks_path and task_id:
+            from agents.task_planner import update_task_status
+            update_task_status(tasks_path, task_id, "completed")
+        
         return {
             "source_path": source_path,
             "target_path": target_path,
@@ -272,6 +282,11 @@ def review_file(
         }
         
     except Exception as e:
+        # tasks.md 상태 업데이트: 실패 시 미완료로 되돌림
+        if tasks_path and task_id:
+            from agents.task_planner import update_task_status
+            update_task_status(tasks_path, task_id, "not_started")
+        
         return {
             "source_path": source_path,
             "target_path": target_path,
