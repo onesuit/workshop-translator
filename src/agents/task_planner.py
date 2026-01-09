@@ -39,6 +39,9 @@ def generate_tasks(
     이 도구는 Orchestrator가 호출하며, 내부에서 TaskPlanner Agent를 실행합니다.
     Agent는 LLM을 사용하여 번역 작업을 실행 가능한 태스크로 분해합니다.
     
+    각 파일마다 translate/review/validate subtask를 생성하여 병렬 처리와
+    진행 상황 추적을 가능하게 합니다.
+    
     Args:
         workshop_path: Workshop 디렉토리 경로
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
@@ -71,33 +74,30 @@ def generate_tasks(
         "",
     ]
     
-    # 파일별 태스크 생성
+    # 파일별 태스크 생성 (translate/review/validate subtask 포함)
     for i, file_path in enumerate(files, start=1):
         # 파일명만 추출
         rel_path = file_path
         if workshop_path in file_path:
             rel_path = file_path.replace(workshop_path, "").lstrip("/")
         
-        lines.append(f"- [ ] 2.{i} `{rel_path}` 번역")
-        lines.append("  - _Requirements: 1.1, 3.1, 4.1_")
+        lines.append(f"- [ ] 2.{i} `{rel_path}` 처리")
+        lines.append(f"  - [ ] 2.{i}.1 번역 (Translate)")
+        lines.append("    - _Requirements: 1.1, 3.1_")
+        lines.append(f"  - [ ] 2.{i}.2 품질 검토 (Review)")
+        lines.append("    - _Requirements: 2.{i}.1, 5.1, 5.2_")
+        lines.append(f"  - [ ] 2.{i}.3 구조 검증 (Validate)")
+        lines.append("    - _Requirements: 2.{i}.1, 6.1, 6.2_")
+    
+    # 총 subtask 수 계산 (각 파일당 3개: translate, review, validate)
+    total_subtasks = len(files) * 3 + 2  # +2 for 1.1 and 3.1
     
     lines.extend([
         "",
-        "## Phase 3: 검증",
+        "## Phase 3: 최종 검증",
         "",
-        "- [ ] 3.1 구조 검증 (Frontmatter, Markdown 구문)",
-        "  - _Requirements: 4.1, 4.2, 6.1_",
-        "",
-        "- [ ] 3.2 품질 검토 (용어 일관성, 자연스러움)",
-        "  - _Requirements: 3.1, 5.1, 5.2_",
-        "",
-        "- [ ] 3.3 줄 수 비교 검증",
-        "  - _Requirements: 6.2, 6.3_",
-        "",
-        "## Phase 4: 완료",
-        "",
-        "- [ ] 4.1 최종 보고서 생성",
-        "  - _Requirements: 6.5_",
+        "- [ ] 3.1 전체 번역 완료 확인",
+        "  - _Requirements: 2.*, 4.1_",
         "",
         "---",
         "",
@@ -108,7 +108,7 @@ def generate_tasks(
         "- `[~]` = 진행 중 (In Progress)",
         "- `[x]` = 완료 (Completed)",
         "",
-        f"- 총 태스크: {len(files) + 5}개",
+        f"- 총 태스크: {total_subtasks}개",
         "- 완료: 0개",
         "- 진행 중: 0개",
         "- 진행률: 0%",
@@ -128,7 +128,7 @@ def generate_tasks(
     return {
         "content": content,
         "output_path": output_path,
-        "task_count": len(files) + 5,  # 파일 수 + 환경설정 + 검증 태스크
+        "task_count": total_subtasks,
         "file_count": len(files),
     }
 

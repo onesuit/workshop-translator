@@ -16,8 +16,8 @@ from agents.analyzer import analyze_workshop
 from agents.designer import generate_design
 from agents.task_planner import generate_tasks, update_task_status
 from agents.translator import translate_file, translate_files_parallel, check_background_tasks
-from agents.reviewer import review_translation, review_all_translations
-from agents.validator import validate_structure
+from agents.reviewer import review_file, review_files_parallel, review_all_translations
+from agents.validator import validate_file, validate_files_parallel, validate_structure
 
 # BedrockAgentCoreApp 인스턴스 생성
 app = BedrockAgentCoreApp()
@@ -57,11 +57,17 @@ async def invoke(payload, context):
             analyze_workshop,
             generate_design,
             generate_tasks,
+            # 번역 도구
             translate_file,
             translate_files_parallel,
             check_background_tasks,  # 백그라운드 작업 상태 확인
-            review_translation,
+            # 검토 도구
+            review_file,
+            review_files_parallel,
             review_all_translations,
+            # 검증 도구
+            validate_file,
+            validate_files_parallel,
             validate_structure,
         ]
     )
@@ -110,11 +116,17 @@ def run_cli():
             analyze_workshop,
             generate_design,
             generate_tasks,
+            # 번역 도구
             translate_file,
             translate_files_parallel,
             check_background_tasks,  # 백그라운드 작업 상태 확인
-            review_translation,
+            # 검토 도구
+            review_file,
+            review_files_parallel,
             review_all_translations,
+            # 검증 도구
+            validate_file,
+            validate_files_parallel,
             validate_structure,
         ]
     )

@@ -7,6 +7,7 @@ from .system_prompts import (
     TRANSLATOR_PROMPT,
     REVIEWER_PROMPT,
     VALIDATOR_PROMPT,
+    get_requirements_path,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "TRANSLATOR_PROMPT",
     "REVIEWER_PROMPT",
     "VALIDATOR_PROMPT",
+    "get_requirements_path",
 ]

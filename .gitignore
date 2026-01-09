@@ -48,4 +48,10 @@ Thumbs.db
 test/cli_remote_backup.py
 
 # Lock files (optional - 팀 정책에 따라 조정)
-# uv.lock
+uv.lock
+
+# Documentation and design files (not for origin)
+DESIGN_SPEC.md
+TEST_INSTALL.md
+TODO_MCP_INTEGRATION.md
+MANIFEST.in

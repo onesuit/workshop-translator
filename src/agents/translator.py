@@ -17,7 +17,7 @@ def create_translator_agent() -> Agent:
     """
     Translator 에이전트 인스턴스를 생성합니다.
     
-    Agent는 번역 작업만 수행하므로 추가 도구가 필요하지 않습니다.
+    Agent는 번역 작업과 함께 tasks.md를 읽고 업데이트할 수 있습니다.
     
     Returns:
         Agent: Translator 에이전트 인스턴스
@@ -25,7 +25,7 @@ def create_translator_agent() -> Agent:
     return Agent(
         model=load_sonnet(),
         system_prompt=TRANSLATOR_PROMPT,
-        tools=[],  # 번역에는 추가 도구 불필요
+        tools=[file_read, file_write],  # tasks.md 읽기/쓰기 가능
     )
 
 
@@ -33,6 +33,8 @@ def create_translator_agent() -> Agent:
 def translate_file(
     source_path: str,
     target_lang: str,
+    tasks_path: str = None,
+    task_id: str = None,
     source_lang: str = "en",
 ) -> dict:
     """
@@ -42,6 +44,8 @@ def translate_file(
     translate_files_parallel 내부에서 각 파일을 번역할 때 사용됩니다.
     내부에서 Translator Agent를 실행하여 AWS Workshop 콘텐츠를 번역합니다.
     
+    Agent는 tasks.md를 읽고 자신의 작업 상태를 업데이트할 수 있습니다.
+    
     **사용 시나리오**:
     - Orchestrator가 특정 파일 하나만 번역하고 싶을 때
     - 번역 실패한 파일을 재시도할 때
@@ -50,6 +54,8 @@ def translate_file(
     Args:
         source_path: 원본 파일 경로 (.{source_lang}.md)
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
+        tasks_path: tasks.md 파일 경로 (선택, Agent가 상태 업데이트용)
+        task_id: 태스크 ID (선택, 예: "2.1.1")
         source_lang: 소스 언어 코드 (기본: en)
     
     Returns:
@@ -82,6 +88,24 @@ def translate_file(
         source_lang_name = lang_names.get(source_lang, source_lang)
         target_lang_name = lang_names.get(target_lang, target_lang)
         
+        # tasks.md 정보 포함
+        tasks_info = ""
+        if tasks_path and task_id:
+            tasks_info = f"""
+
+## 작업 추적
+- tasks.md 경로: {tasks_path}
+- 현재 태스크 ID: {task_id}
+
+**중요**: 번역 시작 전에 tasks.md를 읽고 태스크 {task_id}를 `[~]`로 변경하세요.
+번역 완료 후에는 `[x]`로 변경하세요. 실패 시에는 `[ ]`로 되돌리세요.
+
+체크박스 상태:
+- `[ ]` = 미완료 (Not Started)
+- `[~]` = 진행 중 (In Progress)
+- `[x]` = 완료 (Completed)
+"""
+        
         prompt = f"""
 다음 Markdown 파일을 {source_lang_name}({source_lang})에서 {target_lang_name}({target_lang})로 번역해주세요.
 
@@ -91,11 +115,13 @@ def translate_file(
 3. 코드 블록 내용은 유지, 주석만 번역
 4. 링크 URL은 유지, 텍스트만 번역
 5. Markdown 구조 정확히 유지
+{tasks_info}
 
 ## 원본 내용
-```markdown
+
+<source>
 {source_content}
-```
+</source>
 
 번역된 전체 Markdown 내용만 반환해주세요. 설명이나 추가 텍스트 없이 번역 결과만 출력하세요.
 """
@@ -181,21 +207,18 @@ def translate_files_parallel(
         """
         백그라운드 번역 작업을 수행하는 워커 함수.
         각 워커는 독립적으로 Translator Agent를 생성하고 실행합니다.
+        Agent가 tasks.md를 직접 읽고 업데이트합니다.
         """
         with semaphore:  # 최대 max_concurrent개만 동시 실행
             try:
-                # 번역 시작 시 진행 중 상태로 변경
-                update_task_status(tasks_path, task_id, status="in_progress")
-                
-                # translate_file 도구 함수 호출 (내부에서 Agent 생성 및 실행)
-                result = translate_file(file_path, target_lang, source_lang)
-                
-                # 성공 시 tasks.md 업데이트
-                if result.get("success"):
-                    update_task_status(tasks_path, task_id, status="completed")
-                else:
-                    # 실패 시 미완료 상태로 되돌림
-                    update_task_status(tasks_path, task_id, status="not_started")
+                # translate_file 도구 함수 호출 (Agent가 tasks.md 업데이트)
+                result = translate_file(
+                    file_path, 
+                    target_lang, 
+                    tasks_path=tasks_path,
+                    task_id=task_id,
+                    source_lang=source_lang
+                )
                 
             except Exception as e:
                 print(f"번역 실패 ({file_path}): {e}")
@@ -206,8 +229,8 @@ def translate_files_parallel(
     
     # 각 파일에 대해 백그라운드 스레드 시작
     for i, file_path in enumerate(files):
-        # tasks.md의 태스크 ID 생성 (예: "2.1", "2.2", ...)
-        task_id = f"2.{i+1}"
+        # tasks.md의 태스크 ID 생성 (예: "2.1.1", "2.2.1", ...)
+        task_id = f"2.{i+1}.1"
         
         # AgentCore 백그라운드 태스크 추적 시작
         internal_task_id = app.add_async_task("translate", {
