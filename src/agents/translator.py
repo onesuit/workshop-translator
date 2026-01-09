@@ -116,13 +116,40 @@ def translate_file(
 """
         
         response = agent(prompt)
-        translated_content = str(response).strip()
         
-        # 빈 내용 체크
+        # Agent 응답 처리 - 여러 형식 지원
+        translated_content = ""
+        
+        # 1. 응답을 문자열로 변환
+        response_str = str(response).strip()
+        
+        # 2. 응답에서 실제 번역 내용 추출
+        # Agent가 설명을 포함할 수 있으므로 Markdown frontmatter 찾기
+        if response_str:
+            # Frontmatter(---)로 시작하는 부분 찾기
+            if response_str.startswith("---"):
+                translated_content = response_str
+            elif "---\ntitle:" in response_str or "---\r\ntitle:" in response_str:
+                # 응답 중간에 frontmatter가 있는 경우
+                start_idx = response_str.find("---\ntitle:")
+                if start_idx == -1:
+                    start_idx = response_str.find("---\r\ntitle:")
+                if start_idx >= 0:
+                    translated_content = response_str[start_idx:]
+                else:
+                    translated_content = response_str
+            else:
+                # frontmatter가 없으면 전체 응답 사용
+                translated_content = response_str
+        
+        # 3. 빈 내용 체크 및 디버그
         if not translated_content or len(translated_content) < 10:
-            # 디버그: 원본 응답 출력
+            print(f"[DEBUG] ===== 번역 실패 디버그 정보 =====")
             print(f"[DEBUG] Agent 응답 타입: {type(response)}")
-            print(f"[DEBUG] Agent 응답 내용 (처음 500자): {str(response)[:500]}")
+            print(f"[DEBUG] Agent 응답 길이: {len(response_str)}")
+            print(f"[DEBUG] Agent 응답 내용 (전체):")
+            print(response_str)
+            print(f"[DEBUG] =====================================")
             raise ValueError(f"번역 결과가 비어있거나 너무 짧습니다 (길이: {len(translated_content)})")
         
         # 번역 파일 저장
