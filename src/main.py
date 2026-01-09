@@ -91,6 +91,46 @@ async def invoke(payload, context):
             log.info(f"도구 호출: {tool_name}")
 
 
+# ANSI 색상 코드
+class Colors:
+    """터미널 색상 코드"""
+    CYAN = '\033[96m'      # Orchestrator 메시지용 (밝은 청록색)
+    GREEN = '\033[92m'     # 성공 메시지용
+    YELLOW = '\033[93m'    # 경고 메시지용
+    RED = '\033[91m'       # 에러 메시지용
+    BLUE = '\033[94m'      # 도구 호출용
+    MAGENTA = '\033[95m'   # 진행 상황용
+    RESET = '\033[0m'      # 색상 리셋
+    BOLD = '\033[1m'       # 굵게
+
+
+class ColoredOutput:
+    """stdout을 래핑하여 출력에 색상을 추가하는 클래스"""
+    def __init__(self, original_stdout, color):
+        self.original_stdout = original_stdout
+        self.color = color
+        self.reset = Colors.RESET
+        
+    def write(self, text):
+        """텍스트를 색상과 함께 출력"""
+        if text and text.strip():  # 빈 문자열이 아닌 경우에만 색상 적용
+            # 이미 색상 코드가 있는지 확인 (DEBUG 메시지 등)
+            if '\033[' in text:
+                # 이미 색상이 있으면 그대로 출력
+                self.original_stdout.write(text)
+            else:
+                # 색상 추가
+                self.original_stdout.write(f"{self.color}{text}{self.reset}")
+        else:
+            # 빈 문자열이나 공백은 그대로 출력
+            self.original_stdout.write(text)
+        self.original_stdout.flush()
+    
+    def flush(self):
+        """버퍼 플러시"""
+        self.original_stdout.flush()
+
+
 # 로컬 실행용 CLI 인터페이스
 def run_cli():
     """CLI 모드로 실행합니다."""
@@ -146,14 +186,29 @@ def run_cli():
                 print("\n감사합니다. 안녕히 가세요!")
                 break
             
-            # 에이전트 실행 (Strands가 자동으로 스트리밍 출력)
-            response = agent(user_input)
+            # Orchestrator 레이블 출력 (색상 적용)
+            print(f"\n{Colors.CYAN}{Colors.BOLD}Orchestrator:{Colors.RESET} ", end="", flush=True)
+            
+            # stdout을 색상 래퍼로 교체
+            import sys
+            original_stdout = sys.stdout
+            sys.stdout = ColoredOutput(original_stdout, Colors.CYAN)
+            
+            try:
+                # 에이전트 실행 (출력이 자동으로 색상 적용됨)
+                response = agent(user_input)
+            finally:
+                # 원래 stdout 복원
+                sys.stdout = original_stdout
+            
+            # 응답이 반환되면 줄바꿈
+            print()
                 
         except KeyboardInterrupt:
-            print("\n\n중단되었습니다.")
+            print(f"\n\n{Colors.YELLOW}중단되었습니다.{Colors.RESET}")
             break
         except Exception as e:
-            print(f"\n오류 발생: {e}")
+            print(f"\n{Colors.RED}오류 발생: {e}{Colors.RESET}")
 
 
 if __name__ == "__main__":

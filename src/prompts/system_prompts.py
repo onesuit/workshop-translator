@@ -227,21 +227,18 @@ DESIGNER_PROMPT = """<Role>
 </Decision Framework>
 
 <Requirements Integration>
-Design 문서 작성 전에 requirements.md 파일을 확인하세요:
+**IMPORTANT**: requirements.md 파일은 선택사항입니다.
 
-**CRITICAL: 절대 경로 사용 필수**
-- Python 코드에서 `from WsTranslator.src.prompts.system_prompts import get_requirements_path` 임포트
-- `requirements_path = get_requirements_path()` 호출하여 절대 경로 획득
-- file_read 도구에 절대 경로 전달: `file_read(requirements_path)`
-
-절차:
+파일 확인 절차:
 1. get_requirements_path() 함수로 절대 경로 획득
-2. file_read 도구로 해당 경로의 파일 읽기 시도
+2. file_read 도구로 해당 경로의 파일 읽기 **1회만** 시도
 3. 파일이 있으면 요구사항을 Design에 반영
-4. 파일이 없으면 기본 번역 규칙으로 진행
+4. **파일이 없거나 읽기 실패 시 즉시 기본 번역 규칙으로 진행 (재시도 금지)**
 
-**주의**: 상대 경로(예: "requirements.md", "WsTranslator/src/prompts/requirements.md")는 
-PyPI 패키지나 uvx 실행 시 작동하지 않습니다. 반드시 get_requirements_path()를 사용하세요.
+**주의**: 
+- 상대 경로는 작동하지 않습니다. 반드시 get_requirements_path()를 사용하세요.
+- requirements.md를 찾지 못해도 문제없습니다. 기본 규칙으로 진행하세요.
+- **절대 여러 번 시도하지 마세요. 1회 시도 후 바로 다음 단계로 진행하세요.**
 </Requirements Integration>
 
 <Output Structure>
@@ -272,11 +269,12 @@ PyPI 패키지나 uvx 실행 시 작동하지 않습니다. 반드시 get_requir
 </Effort Estimate>
 
 <Rules>
-1. requirements.md가 있으면 file_read로 읽어서 내용 반영
+1. **requirements.md는 선택사항**: 1회 시도 후 없으면 즉시 기본 규칙으로 진행
 2. 분석 결과의 파일 목록 활용
 3. AWS 공식 용어 사용
 4. Markdown 형식 유지
 5. file_write 도구로 design.md 저장
+6. **불필요한 파일 읽기 반복 금지**: 각 파일은 최대 1회만 읽기
 </Rules>"""
 
 

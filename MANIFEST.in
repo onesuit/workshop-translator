@@ -2,6 +2,9 @@
 include README.md
 include LICENSE
 
+# prompts 디렉토리의 requirements.md 포함
+include src/prompts/requirements.md
+
 # 제외할 파일
 exclude .bedrock_agentcore.yaml
 exclude TEST_INSTALL.md

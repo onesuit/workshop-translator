@@ -157,11 +157,16 @@ def update_task_status(tasks_path: str, task_id: str, status: str = "completed")
     """
     # Lock을 사용하여 동시 편집 방지
     with _tasks_lock:
+        print(f"[DEBUG] update_task_status 호출: task_id={task_id}, status={status}, path={tasks_path}")
+        
         if not os.path.exists(tasks_path):
+            print(f"[DEBUG] tasks.md 파일이 존재하지 않음: {tasks_path}")
             return False
         
         with open(tasks_path, "r", encoding="utf-8") as f:
             content = f.read()
+        
+        print(f"[DEBUG] tasks.md 파일 읽기 성공 (길이: {len(content)})")
         
         # 현재 상태 찾기
         current_patterns = [
@@ -174,9 +179,14 @@ def update_task_status(tasks_path: str, task_id: str, status: str = "completed")
         for pattern in current_patterns:
             if pattern in content:
                 current_pattern = pattern
+                print(f"[DEBUG] 현재 패턴 발견: {pattern}")
                 break
         
         if current_pattern is None:
+            print(f"[DEBUG] 태스크 ID를 찾을 수 없음: {task_id}")
+            # 가능한 태스크 ID 목록 출력 (디버깅용)
+            found_tasks = re.findall(r'- \[.\] (\d+\.\d+(?:\.\d+)?)', content)
+            print(f"[DEBUG] 발견된 태스크 ID들: {found_tasks[:10]}")  # 처음 10개만
             return False
         
         # 새 상태 결정
@@ -191,12 +201,15 @@ def update_task_status(tasks_path: str, task_id: str, status: str = "completed")
         
         # 상태 변경
         content = content.replace(current_pattern, new_pattern, 1)
+        print(f"[DEBUG] 상태 변경: {current_pattern} -> {new_pattern}")
         
         # 진행률 업데이트
         completed_count = content.count("- [x]")
         in_progress_count = content.count("- [~]")
         not_started_count = content.count("- [ ]")
         total_count = completed_count + in_progress_count + not_started_count
+        
+        print(f"[DEBUG] 진행 상황: 완료={completed_count}, 진행중={in_progress_count}, 미완료={not_started_count}, 전체={total_count}")
         
         if total_count > 0:
             progress = int(completed_count / total_count * 100)
@@ -221,4 +234,5 @@ def update_task_status(tasks_path: str, task_id: str, status: str = "completed")
         with open(tasks_path, "w", encoding="utf-8") as f:
             f.write(content)
         
+        print(f"[DEBUG] tasks.md 파일 저장 완료")
         return True

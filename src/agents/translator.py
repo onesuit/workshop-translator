@@ -17,7 +17,7 @@ def create_translator_agent() -> Agent:
     """
     Translator 에이전트 인스턴스를 생성합니다.
     
-    Agent는 번역 작업과 함께 tasks.md를 읽고 업데이트할 수 있습니다.
+    Agent는 번역 작업만 수행하며, 파일 읽기/쓰기는 translate_file 함수에서 처리합니다.
     
     Returns:
         Agent: Translator 에이전트 인스턴스
@@ -25,7 +25,7 @@ def create_translator_agent() -> Agent:
     return Agent(
         model=load_sonnet(),
         system_prompt=TRANSLATOR_PROMPT,
-        tools=[file_read, file_write],  # tasks.md 읽기/쓰기 가능
+        tools=[],  # 도구 없음 - 번역 결과만 반환
     )
 
 
@@ -74,7 +74,10 @@ def translate_file(
         # tasks.md 상태 업데이트: 진행 중으로 변경
         if tasks_path and task_id:
             from agents.task_planner import update_task_status
-            update_task_status(tasks_path, task_id, "in_progress")
+            print(f"[DEBUG] 번역 시작: {task_id} - {source_path}")
+            print(f"[DEBUG] tasks.md 경로: {tasks_path}")
+            success = update_task_status(tasks_path, task_id, "in_progress")
+            print(f"[DEBUG] 상태 업데이트 (진행 중): {success}")
         
         # Agent 생성 및 번역 실행
         agent = create_translator_agent()
@@ -93,24 +96,6 @@ def translate_file(
         source_lang_name = lang_names.get(source_lang, source_lang)
         target_lang_name = lang_names.get(target_lang, target_lang)
         
-        # tasks.md 정보 포함
-        tasks_info = ""
-        if tasks_path and task_id:
-            tasks_info = f"""
-
-## 작업 추적
-- tasks.md 경로: {tasks_path}
-- 현재 태스크 ID: {task_id}
-
-**중요**: 번역 시작 전에 tasks.md를 읽고 태스크 {task_id}를 `[~]`로 변경하세요.
-번역 완료 후에는 `[x]`로 변경하세요. 실패 시에는 `[ ]`로 되돌리세요.
-
-체크박스 상태:
-- `[ ]` = 미완료 (Not Started)
-- `[~]` = 진행 중 (In Progress)
-- `[x]` = 완료 (Completed)
-"""
-        
         prompt = f"""
 다음 Markdown 파일을 {source_lang_name}({source_lang})에서 {target_lang_name}({target_lang})로 번역해주세요.
 
@@ -120,7 +105,6 @@ def translate_file(
 3. 코드 블록 내용은 유지, 주석만 번역
 4. 링크 URL은 유지, 텍스트만 번역
 5. Markdown 구조 정확히 유지
-{tasks_info}
 
 ## 원본 내용
 
@@ -128,24 +112,17 @@ def translate_file(
 {source_content}
 </source>
 
-번역된 전체 Markdown 내용만 반환해주세요. 설명이나 추가 텍스트 없이 번역 결과만 출력하세요.
+**중요**: 번역된 전체 Markdown 내용만 반환해주세요. 설명이나 추가 텍스트 없이 번역 결과만 출력하세요.
 """
         
         response = agent(prompt)
         translated_content = str(response).strip()
         
-        # Agent 응답에서 실제 번역 내용만 추출
-        # Agent가 설명을 포함할 수 있으므로 Markdown 시작 부분 찾기
-        if translated_content.startswith("---"):
-            # Frontmatter로 시작하면 그대로 사용
-            pass
-        elif "---" in translated_content:
-            # 응답 중간에 Frontmatter가 있으면 그 부분부터 추출
-            start_idx = translated_content.find("---")
-            translated_content = translated_content[start_idx:]
-        
         # 빈 내용 체크
         if not translated_content or len(translated_content) < 10:
+            # 디버그: 원본 응답 출력
+            print(f"[DEBUG] Agent 응답 타입: {type(response)}")
+            print(f"[DEBUG] Agent 응답 내용 (처음 500자): {str(response)[:500]}")
             raise ValueError(f"번역 결과가 비어있거나 너무 짧습니다 (길이: {len(translated_content)})")
         
         # 번역 파일 저장
@@ -154,7 +131,9 @@ def translate_file(
         # tasks.md 상태 업데이트: 완료로 변경
         if tasks_path and task_id:
             from agents.task_planner import update_task_status
-            update_task_status(tasks_path, task_id, "completed")
+            print(f"[DEBUG] 번역 완료: {task_id} - {target_path}")
+            success = update_task_status(tasks_path, task_id, "completed")
+            print(f"[DEBUG] 상태 업데이트 (완료): {success}")
         
         return {
             "source_path": source_path,
@@ -170,7 +149,9 @@ def translate_file(
         # tasks.md 상태 업데이트: 실패 시 미완료로 되돌림
         if tasks_path and task_id:
             from agents.task_planner import update_task_status
-            update_task_status(tasks_path, task_id, "not_started")
+            print(f"[DEBUG] 번역 실패: {task_id} - {str(e)}")
+            success = update_task_status(tasks_path, task_id, "not_started")
+            print(f"[DEBUG] 상태 업데이트 (실패): {success}")
         
         return {
             "source_path": source_path,
