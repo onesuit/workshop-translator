@@ -7,6 +7,10 @@ from strands.agent.conversation_manager import SummarizingConversationManager
 from strands_tools import file_read, file_write
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
+# strands-agents-tools의 도구 동의 절차 우회 설정
+# file_read, file_write 등의 도구를 자동으로 승인하여 사용자 확인 없이 실행
+os.environ['BYPASS_TOOL_CONSENT'] = 'true'
+
 # 로컬 모듈 임포트
 from model.load import load_opus, load_sonnet
 from prompts.system_prompts import ORCHESTRATOR_PROMPT
