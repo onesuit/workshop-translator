@@ -49,11 +49,12 @@ Phase 1: 분석
 - **에러 처리**: 실패 시 최대 3회 재시도, 문제 파악 후 해결
 
 Phase 2: Spec 생성
-- requirements.md 파일 읽기
-  - 사용자 요구사항 파악
-  - 번역 규칙 및 제약사항 확인
+- **requirements.md 읽기** (선택사항):
+  - file_read 도구로 `{workshop_path}/translation/requirements.md` 읽기
+  - 파일이 있으면 내용을 읽어서 다음 단계에 전달
+  - 파일이 없으면 None으로 진행 (에러 아님)
 - generate_design 도구로 design.md 생성
-  - requirements.md 내용을 반영하여 설계
+  - requirements.md 내용이 있으면 `requirements_content` 파라미터로 전달
   - **에러 처리**: 실패 시 최대 3회 재시도
   - 실패 원인 분석 (경로 문제, 권한 문제 등)
   - 문제 해결 후 재시도
@@ -227,18 +228,9 @@ DESIGNER_PROMPT = """<Role>
 </Decision Framework>
 
 <Requirements Integration>
-**IMPORTANT**: requirements.md 파일은 선택사항입니다.
-
-파일 확인 절차:
-1. get_requirements_path() 함수로 절대 경로 획득
-2. file_read 도구로 해당 경로의 파일 읽기 **1회만** 시도
-3. 파일이 있으면 요구사항을 Design에 반영
-4. **파일이 없거나 읽기 실패 시 즉시 기본 번역 규칙으로 진행 (재시도 금지)**
-
-**주의**: 
-- 상대 경로는 작동하지 않습니다. 반드시 get_requirements_path()를 사용하세요.
-- requirements.md를 찾지 못해도 문제없습니다. 기본 규칙으로 진행하세요.
-- **절대 여러 번 시도하지 마세요. 1회 시도 후 바로 다음 단계로 진행하세요.**
+사용자 요구사항은 Orchestrator가 읽어서 프롬프트에 포함합니다.
+요구사항이 제공되면 Design 문서에 반영하세요.
+요구사항이 없으면 기본 번역 규칙으로 진행하세요.
 </Requirements Integration>
 
 <Output Structure>

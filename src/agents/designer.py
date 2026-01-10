@@ -12,9 +12,7 @@ def create_designer_agent() -> Agent:
     """
     Designer 에이전트 인스턴스를 생성합니다.
     
-    Agent는 다음 도구들을 사용할 수 있습니다:
-    - file_read: 파일 내용 읽기 (strands 기본 도구)
-    - file_write: 파일 쓰기 (strands 기본 도구)
+    Agent는 Design 문서 생성만 수행하며, 파일 읽기/쓰기는 generate_design 함수에서 처리합니다.
     
     Returns:
         Agent: Designer 에이전트 인스턴스
@@ -22,7 +20,7 @@ def create_designer_agent() -> Agent:
     return Agent(
         model=load_sonnet(),
         system_prompt=DESIGNER_PROMPT,
-        tools=[file_read, file_write],
+        tools=[],  # 도구 없음 - Design 문서 내용만 반환
     )
 
 
@@ -96,20 +94,21 @@ def generate_design(
     workshop_path: str,
     target_lang: str,
     file_count: int,
-    output_path: str = None
+    output_path: str = None,
+    requirements_content: str = None
 ) -> dict:
     """
     Design 문서를 생성합니다.
     
     이 도구는 Orchestrator가 호출하며, 내부에서 Designer Agent를 실행합니다.
     Agent는 LLM을 사용하여 번역 프로젝트의 설계 문서를 생성합니다.
-    Agent는 file_read 도구를 사용하여 requirements.md를 읽고 반영할 수 있습니다.
     
     Args:
         workshop_path: Workshop 디렉토리 경로
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
         file_count: 번역 대상 파일 수
         output_path: 출력 파일 경로 (선택)
+        requirements_content: requirements.md 파일 내용 (선택, Orchestrator가 읽어서 전달)
     
     Returns:
         dict: 생성 결과
@@ -140,7 +139,7 @@ def generate_design(
     else:
         effort_estimate = "Long (>2d)"
     
-    # Agent 생성 및 실행
+    # Agent 생성
     agent = create_designer_agent()
     
     # 출력 경로 설정
@@ -149,8 +148,19 @@ def generate_design(
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # requirements.md 경로
-    requirements_path = os.path.join(workshop_path, "translation", "requirements.md")
+    # Requirements 정보 포함
+    requirements_section = ""
+    if requirements_content:
+        requirements_section = f"""
+
+## 사용자 요구사항
+
+다음은 사용자가 제공한 번역 요구사항입니다. Design 문서에 이 내용을 반영하세요:
+
+<requirements>
+{requirements_content}
+</requirements>
+"""
     
     # Agent에게 Design 문서 생성 요청
     prompt = f"""
@@ -160,13 +170,9 @@ Design 문서를 생성해주세요.
 **타겟 언어**: {target_lang} ({target_lang_name})
 **번역 대상 파일 수**: {file_count}개
 **노력 추정**: {effort_estimate}
+{requirements_section}
 
-**Requirements 파일**: {requirements_path}
-- 이 경로에 requirements.md가 있으면 file_read 도구로 읽어서 내용을 반영하세요
-- 없으면 기본 번역 규칙으로 진행하세요
-
-DESIGNER_PROMPT에 명시된 형식으로 Design 문서를 작성하고,
-{output_path} 경로에 file_write 도구로 저장해주세요.
+DESIGNER_PROMPT에 명시된 형식으로 Design 문서를 작성해주세요.
 
 반드시 다음 섹션을 포함하세요:
 1. Overview
@@ -175,37 +181,33 @@ DESIGNER_PROMPT에 명시된 형식으로 Design 문서를 작성하고,
 4. Technical Term Glossary
 5. Translation Rules
 6. Testing Strategy
+
+**중요**: Design 문서 내용만 반환해주세요. 설명이나 추가 텍스트 없이 Markdown 문서만 출력하세요.
 """
     
     try:
         response = agent(prompt)
+        content = str(response).strip()
         
-        # 생성된 파일 읽기
-        if os.path.exists(output_path):
-            with open(output_path, "r", encoding="utf-8") as f:
-                content = f.read()
-        else:
-            # Agent가 파일을 생성하지 않은 경우 템플릿 사용
-            content = DESIGN_TEMPLATE.format(
-                workshop_path=workshop_path,
-                file_count=file_count,
-                target_lang=target_lang,
-                target_lang_name=target_lang_name,
-                effort_estimate=effort_estimate,
-            )
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+        # 빈 응답 체크
+        if not content or len(content) < 100:
+            raise ValueError(f"Design 문서가 비어있거나 너무 짧습니다 (길이: {len(content)})")
+        
+        # 파일 저장
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
         
         return {
             "content": content,
             "output_path": output_path,
             "target_lang": target_lang,
             "file_count": file_count,
-            "agent_response": str(response),
+            "success": True,
         }
         
     except Exception as e:
         # 에러 발생 시 템플릿 사용
+        print(f"[WARNING] Design 생성 실패, 템플릿 사용: {e}")
         content = DESIGN_TEMPLATE.format(
             workshop_path=workshop_path,
             file_count=file_count,
@@ -221,5 +223,6 @@ DESIGNER_PROMPT에 명시된 형식으로 Design 문서를 작성하고,
             "output_path": output_path,
             "target_lang": target_lang,
             "file_count": file_count,
+            "success": False,
             "error": str(e),
         }
