@@ -1,21 +1,42 @@
-# Workshop Translator 서브에이전트 모듈
-# Agent as Tool 패턴으로 구현
+# 에이전트 모듈
+# Orchestrator 중심 아키텍처
 
+# 분석/설계 도구
 from .analyzer import analyze_workshop
 from .designer import generate_design
-from .task_planner import generate_tasks
-from .translator import translate_file, translate_files_parallel
-from .reviewer import review_file, review_files_parallel, review_all_translations
-from .validator import validate_structure
+
+# Orchestrator 도구
+from .orchestrator import (
+    initialize_workflow,
+    run_translation_phase,
+    run_review_phase,
+    run_validate_phase,
+    get_workflow_status,
+    retry_failed_tasks,
+    check_phase_completion,
+)
+
+# Stateless 워커
+from .workers import (
+    translate_single_file,
+    review_single_file,
+    validate_single_file,
+)
 
 __all__ = [
+    # 분석/설계
     "analyze_workshop",
-    "generate_design", 
-    "generate_tasks",
-    "translate_file",
-    "translate_files_parallel",
-    "review_file",
-    "review_files_parallel",
-    "review_all_translations",
-    "validate_structure",
+    "generate_design",
+    # Orchestrator 도구
+    "initialize_workflow",
+    "run_translation_phase",
+    "run_review_phase",
+    "run_validate_phase",
+    "get_workflow_status",
+    "retry_failed_tasks",
+    "check_phase_completion",
+    # Stateless 워커
+    "translate_single_file",
+    "review_single_file",
+    "validate_single_file",
 ]

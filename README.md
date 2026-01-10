@@ -2,6 +2,110 @@
 
 AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입니다.
 
+## 아키텍처
+
+**Orchestrator 중심 아키텍처**를 사용합니다.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Orchestrator (main.py)                      │
+│                    Claude Opus / Sonnet                          │
+│                                                                  │
+│  핵심 원칙: tasks.md는 오직 Orchestrator만 수정                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    │   TaskManager     │
+                    │   (싱글톤)         │
+                    │                   │
+                    │ • 태스크 상태 관리  │
+                    │ • 의존성 체크      │
+                    │ • tasks.md 동기화  │
+                    └─────────┬─────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  Translator   │    │   Reviewer    │    │   Validator   │
+│    Worker     │    │    Worker     │    │    Worker     │
+│  (Stateless)  │    │  (Stateless)  │    │  (Stateless)  │
+│ 결과만 반환    │    │ 결과만 반환    │    │ 결과만 반환    │
+└───────────────┘    └───────────────┘    └───────────────┘
+```
+
+### 핵심 설계 원칙
+
+| 항목 | 설명 |
+|------|------|
+| **중앙 집중식 상태 관리** | tasks.md는 오직 Orchestrator(TaskManager)만 수정 |
+| **Stateless Workers** | Sub-agent는 결과만 반환, 상태 파일 직접 수정 안 함 |
+| **자동 의존성 관리** | TaskManager가 태스크 간 의존성을 자동으로 체크 |
+| **병렬 처리** | ThreadPoolExecutor로 최대 5개 파일 동시 처리 |
+
+## 디렉토리 구조
+
+```
+src/
+├── main.py                    # 진입점 (CLI, AgentCore Runtime)
+│
+├── task_manager/              # 중앙 집중식 태스크 관리
+│   ├── types.py               # Task, TaskResult, TaskStatus
+│   └── manager.py             # TaskManager 싱글톤
+│
+├── agents/
+│   ├── analyzer.py            # Workshop 구조 분석
+│   ├── designer.py            # 설계 문서 생성
+│   ├── orchestrator.py        # Orchestrator 도구들
+│   └── workers/               # Stateless 워커들
+│       ├── translator_worker.py
+│       ├── reviewer_worker.py
+│       └── validator_worker.py
+│
+├── model/                     # 모델 로딩 (Opus, Sonnet)
+├── prompts/                   # 시스템 프롬프트
+└── tools/                     # 파일 읽기/쓰기 도구
+```
+
+## 워크플로우
+
+```
+Phase 1: 분석/설계
+    ├── analyze_workshop()     → Workshop 구조 분석
+    └── generate_design()      → 설계 문서 생성
+           │
+           ▼
+Phase 2: 워크플로우 초기화
+    └── initialize_workflow()  → TaskManager 초기화, tasks.md 생성
+           │
+           ▼
+Phase 3: 번역
+    └── run_translation_phase() → 병렬 번역 실행
+           │
+           ▼
+Phase 4: 검토
+    └── run_review_phase()     → 번역 완료 파일만 검토
+           │
+           ▼
+Phase 5: 검증
+    └── run_validate_phase()   → 번역+검토 완료 파일만 검증
+           │
+           ▼
+Phase 6: 완료
+    └── get_workflow_status()  → 최종 결과 보고
+```
+
+## Orchestrator 도구
+
+| 도구 | 설명 |
+|------|------|
+| `initialize_workflow` | 워크플로우 초기화, tasks.md 생성 |
+| `run_translation_phase` | 번역 단계 병렬 실행 |
+| `run_review_phase` | 검토 단계 병렬 실행 |
+| `run_validate_phase` | 검증 단계 병렬 실행 |
+| `get_workflow_status` | 전체 진행 상황 조회 |
+| `retry_failed_tasks` | 실패 태스크 재시도 |
+| `check_phase_completion` | 단계 완료 여부 확인 |
+
 ## 설치 및 실행
 
 ### PyPI에서 설치 (권장)
@@ -35,48 +139,32 @@ wstranslator
 ### 대화형 모드
 
 ```bash
-# uvx 사용 (가장 간단!)
-uvx wstranslator
-
-# 또는 설치 후
 wstranslator
 ```
 
-대화형 모드에서는 여러 질문을 연속으로 할 수 있으며, 종료하려면 `exit` 또는 `quit`를 입력하세요.
+대화형 모드에서 Orchestrator가 자동으로 워크플로우를 진행합니다.
+
+**예시 대화:**
+```
+사용자: /path/to/workshop 디렉토리를 한국어로 번역해주세요
+
+Orchestrator: Workshop 구조를 분석하겠습니다...
+              → 10개 파일 발견
+              → 워크플로우 초기화 완료
+              → 번역 시작 (5개씩 병렬 처리)
+              → 번역 완료: 10/10 (100%)
+              → 검토 시작...
+              → 검증 완료. 모든 작업이 완료되었습니다.
+```
 
 ### 필수 요구사항
 - AWS 자격 증명 설정 (AWS CLI 또는 환경 변수)
-- Bedrock 모델 접근 권한 (기본적으로 활성화됨)
-
-<!--
-### 원격 모드 (고급)
-
-이미 배포된 AgentCore Runtime을 사용하여 실행합니다. 
-원격 모드를 사용하려면 별도의 AgentCore Runtime 배포와 IAM 권한 설정이 필요합니다.
-
-#### AgentCore Runtime 배포
-
-1. `.bedrock_agentcore.yaml` 파일 준비
-2. AgentCore CLI로 설정:
-   ```bash
-   agentcore configure --name YourAgentName
-   ```
-3. AgentCore CLI로 배포:
-   ```bash
-   agentcore deploy
-   ```
-4. Runtime ARN 확인
-
-#### 원격 모드 실행
-
-원격 모드 코드는 `src/cli_remote_backup.py`에 백업되어 있습니다.
-필요한 경우 해당 파일을 참고하여 구현할 수 있습니다.
--->
+- Bedrock 모델 접근 권한
 
 ## 환경 변수
 
 ```bash
-# AWS 리전 설정 (기본값: us-east-1)
+# AWS 리전 설정 (기본값: us-west-2)
 export AWS_REGION=us-west-2
 
 # AWS 프로파일 설정
@@ -93,7 +181,7 @@ aws configure
 # 또는 환경 변수 설정
 export AWS_ACCESS_KEY_ID=your_key
 export AWS_SECRET_ACCESS_KEY=your_secret
-export AWS_REGION=us-east-1
+export AWS_REGION=us-west-2
 ```
 
 ## 개발자 정보

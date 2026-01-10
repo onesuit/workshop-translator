@@ -1,5 +1,5 @@
 # Workshop Translator - Orchestrator 메인 진입점
-# Sisyphus 패턴 참고: 대화형 인터페이스, 자동 진행, Todo 추적
+# 중앙 집중식 상태 관리
 
 import os
 from strands import Agent, tool
@@ -8,20 +8,26 @@ from strands_tools import file_read, file_write
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 # strands-agents-tools의 도구 동의 절차 우회 설정
-# file_read, file_write 등의 도구를 자동으로 승인하여 사용자 확인 없이 실행
 os.environ['BYPASS_TOOL_CONSENT'] = 'true'
 
 # 로컬 모듈 임포트
 from model.load import load_opus, load_sonnet
 from prompts.system_prompts import ORCHESTRATOR_PROMPT
 
-# 서브에이전트 도구 임포트
+# 분석/설계 도구 (기존)
 from agents.analyzer import analyze_workshop
 from agents.designer import generate_design
-from agents.task_planner import generate_tasks, update_task_status
-from agents.translator import translate_file, translate_files_parallel, check_background_tasks
-from agents.reviewer import review_file, review_files_parallel, review_all_translations
-from agents.validator import validate_file, validate_files_parallel, validate_structure
+
+# Orchestrator 도구
+from agents.orchestrator import (
+    initialize_workflow,
+    run_translation_phase,
+    run_review_phase,
+    run_validate_phase,
+    get_workflow_status,
+    retry_failed_tasks,
+    check_phase_completion,
+)
 
 # BedrockAgentCoreApp 인스턴스 생성
 app = BedrockAgentCoreApp()
@@ -34,21 +40,17 @@ REGION = os.getenv("AWS_REGION", "us-west-2")
 @app.entrypoint
 async def invoke(payload, context):
     """에이전트 호출 진입점"""
-    # 세션 ID 가져오기
     session_id = getattr(context, 'session_id', 'default')
-    
-    # 프롬프트 가져오기
     prompt = payload.get("prompt", "")
     
-    # Conversation Manager 설정 (긴 대화 관리)
+    # Conversation Manager 설정
     conversation_manager = SummarizingConversationManager(
         summary_ratio=0.3,
         preserve_recent_messages=10,
         summarization_system_prompt="번역 작업 대화 내용을 간결하게 요약해주세요."
     )
     
-    # Orchestrator 에이전트 생성
-    # Opus 4.5 사용 (extended thinking 지원)
+    # Orchestrator 에이전트 생성 (Opus 사용)
     agent = Agent(
         model=load_opus(),
         conversation_manager=conversation_manager,
@@ -57,22 +59,17 @@ async def invoke(payload, context):
             # 파일 도구
             file_read,
             file_write,
-            # 서브에이전트 도구 (Agent as Tool)
+            # 분석/설계 도구
             analyze_workshop,
             generate_design,
-            generate_tasks,
-            # 번역 도구
-            translate_file,
-            translate_files_parallel,
-            check_background_tasks,  # 백그라운드 작업 상태 확인
-            # 검토 도구
-            review_file,
-            review_files_parallel,
-            review_all_translations,
-            # 검증 도구
-            validate_file,
-            validate_files_parallel,
-            validate_structure,
+            # Orchestrator 도구
+            initialize_workflow,      # 워크플로우 초기화
+            run_translation_phase,    # 번역 단계 실행
+            run_review_phase,         # 검토 단계 실행
+            run_validate_phase,       # 검증 단계 실행
+            get_workflow_status,      # 상태 조회
+            retry_failed_tasks,       # 실패 재시도
+            check_phase_completion,   # 단계 완료 확인
         ]
     )
     
@@ -80,11 +77,8 @@ async def invoke(payload, context):
     stream = agent.stream_async(prompt)
     
     async for event in stream:
-        # 텍스트 응답 처리
         if "data" in event and isinstance(event["data"], str):
             yield event["data"]
-        
-        # 도구 호출 로깅 (디버그용)
         elif "current_tool_use" in event:
             tool_use = event["current_tool_use"]
             tool_name = tool_use.get("name", "unknown")
@@ -94,14 +88,14 @@ async def invoke(payload, context):
 # ANSI 색상 코드
 class Colors:
     """터미널 색상 코드"""
-    CYAN = '\033[96m'      # Orchestrator 메시지용 (밝은 청록색)
-    GREEN = '\033[92m'     # 성공 메시지용
-    YELLOW = '\033[93m'    # 경고 메시지용
-    RED = '\033[91m'       # 에러 메시지용
-    BLUE = '\033[94m'      # 도구 호출용
-    MAGENTA = '\033[95m'   # 진행 상황용
-    RESET = '\033[0m'      # 색상 리셋
-    BOLD = '\033[1m'       # 굵게
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
 
 
 class ColoredOutput:
@@ -112,34 +106,37 @@ class ColoredOutput:
         self.reset = Colors.RESET
         
     def write(self, text):
-        """텍스트를 색상과 함께 출력"""
-        if text and text.strip():  # 빈 문자열이 아닌 경우에만 색상 적용
-            # 이미 색상 코드가 있는지 확인 (DEBUG 메시지 등)
+        if text and text.strip():
             if '\033[' in text:
-                # 이미 색상이 있으면 그대로 출력
                 self.original_stdout.write(text)
             else:
-                # 색상 추가
                 self.original_stdout.write(f"{self.color}{text}{self.reset}")
         else:
-            # 빈 문자열이나 공백은 그대로 출력
             self.original_stdout.write(text)
         self.original_stdout.flush()
     
     def flush(self):
-        """버퍼 플러시"""
         self.original_stdout.flush()
 
 
-# 로컬 실행용 CLI 인터페이스
 def run_cli():
     """CLI 모드로 실행합니다."""
     print("=" * 60)
-    print("Workshop Translator Agent")
+    print("Workshop Translator Agent (Orchestrator Pattern)")
     print("=" * 60)
     print("\n안녕하세요! AWS Workshop 번역을 도와드리겠습니다.")
-    print("💡 이 도구는 AWS Bedrock을 사용합니다. AWS 자격 증명이 필요합니다.")
-    print("   (aws configure 또는 환경 변수로 설정)")
+    print("💡 중앙 집중식 워크플로우입니다.")
+    print("\n⚠️  AWS 인증 정보가 필요합니다 (Bedrock 호출용)")
+    print("   - AWS CLI 설정: aws configure")
+    print("   - 또는 환경 변수: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY")
+    print("   - 리전 설정: AWS_REGION (기본값: us-west-2)")
+    print("\n📋 워크플로우:")
+    print("  1. analyze_workshop → 구조 분석")
+    print("  2. generate_design → 설계 문서 생성")
+    print("  3. initialize_workflow → 태스크 초기화")
+    print("  4. run_translation_phase → 번역 실행")
+    print("  5. run_review_phase → 품질 검토")
+    print("  6. run_validate_phase → 구조 검증")
     print("\n종료하려면 'exit' 또는 'quit'를 입력하세요.\n")
     
     # Conversation Manager 설정
@@ -149,9 +146,9 @@ def run_cli():
         summarization_system_prompt="번역 작업 대화 내용을 간결하게 요약해주세요."
     )
     
-    # Orchestrator 에이전트 생성
+    # Orchestrator 에이전트 생성 (CLI에서는 Sonnet 사용)
     agent = Agent(
-        model=load_sonnet(),  # CLI에서는 Sonnet 사용 (비용 절감)
+        model=load_sonnet(),
         conversation_manager=conversation_manager,
         system_prompt=ORCHESTRATOR_PROMPT,
         tools=[
@@ -159,19 +156,14 @@ def run_cli():
             file_write,
             analyze_workshop,
             generate_design,
-            generate_tasks,
-            # 번역 도구
-            translate_file,
-            translate_files_parallel,
-            check_background_tasks,  # 백그라운드 작업 상태 확인
-            # 검토 도구
-            review_file,
-            review_files_parallel,
-            review_all_translations,
-            # 검증 도구
-            validate_file,
-            validate_files_parallel,
-            validate_structure,
+            # Orchestrator 도구
+            initialize_workflow,
+            run_translation_phase,
+            run_review_phase,
+            run_validate_phase,
+            get_workflow_status,
+            retry_failed_tasks,
+            check_phase_completion,
         ]
     )
     
@@ -186,22 +178,17 @@ def run_cli():
                 print("\n감사합니다. 안녕히 가세요!")
                 break
             
-            # Orchestrator 레이블 출력 (색상 적용)
             print(f"\n{Colors.CYAN}{Colors.BOLD}Orchestrator:{Colors.RESET} ", end="", flush=True)
             
-            # stdout을 색상 래퍼로 교체
             import sys
             original_stdout = sys.stdout
             sys.stdout = ColoredOutput(original_stdout, Colors.CYAN)
             
             try:
-                # 에이전트 실행 (출력이 자동으로 색상 적용됨)
                 response = agent(user_input)
             finally:
-                # 원래 stdout 복원
                 sys.stdout = original_stdout
             
-            # 응답이 반환되면 줄바꿈
             print()
                 
         except KeyboardInterrupt:
@@ -215,8 +202,6 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) > 1 and sys.argv[1] == "cli":
-        # CLI 모드 실행
         run_cli()
     else:
-        # AgentCore Runtime 모드 실행
         app.run()
