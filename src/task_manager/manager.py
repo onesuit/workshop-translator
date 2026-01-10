@@ -47,16 +47,18 @@ class TaskManager:
         workshop_path: str, 
         target_lang: str,
         files: List[str],
-        tasks_path: Optional[str] = None
+        tasks_path: Optional[str] = None,
+        force_reset: bool = False
     ) -> str:
         """
-        워크플로우 초기화 및 tasks.md 생성
+        워크플로우 초기화 및 tasks.md 생성/로드
         
         Args:
             workshop_path: Workshop 디렉토리 경로
             target_lang: 타겟 언어 코드
             files: 번역 대상 파일 목록
             tasks_path: tasks.md 경로 (선택)
+            force_reset: True면 기존 tasks.md 무시하고 새로 생성
         
         Returns:
             str: 생성된 tasks.md 경로
@@ -69,38 +71,88 @@ class TaskManager:
         )
         self._tasks.clear()
         
+        # 기존 tasks.md가 있으면 상태 로드 시도
+        existing_status = {}
+        if not force_reset and os.path.exists(self._tasks_path):
+            existing_status = self._load_status_from_file()
+        
         # 각 파일당 3개 태스크 생성 (translate, review, validate)
         for i, file_path in enumerate(files, start=1):
             base_id = f"2.{i}"
             
             # 번역 태스크
-            self._tasks[f"{base_id}.1"] = Task(
-                id=f"{base_id}.1",
+            task_id = f"{base_id}.1"
+            self._tasks[task_id] = Task(
+                id=task_id,
                 type=TaskType.TRANSLATE,
                 file_path=file_path,
-                depends_on=[]  # 의존성 없음
+                depends_on=[],
+                status=existing_status.get(task_id, TaskStatus.NOT_STARTED)
             )
             
             # 검토 태스크 (번역 완료 후)
-            self._tasks[f"{base_id}.2"] = Task(
-                id=f"{base_id}.2",
+            task_id = f"{base_id}.2"
+            self._tasks[task_id] = Task(
+                id=task_id,
                 type=TaskType.REVIEW,
                 file_path=file_path,
-                depends_on=[f"{base_id}.1"]  # 번역 완료 필요
+                depends_on=[f"{base_id}.1"],
+                status=existing_status.get(task_id, TaskStatus.NOT_STARTED)
             )
             
             # 검증 태스크 (번역, 검토 완료 후)
-            self._tasks[f"{base_id}.3"] = Task(
-                id=f"{base_id}.3",
+            task_id = f"{base_id}.3"
+            self._tasks[task_id] = Task(
+                id=task_id,
                 type=TaskType.VALIDATE,
                 file_path=file_path,
-                depends_on=[f"{base_id}.1", f"{base_id}.2"]  # 둘 다 완료 필요
+                depends_on=[f"{base_id}.1", f"{base_id}.2"],
+                status=existing_status.get(task_id, TaskStatus.NOT_STARTED)
             )
         
-        # tasks.md 파일 생성
+        # tasks.md 파일 동기화
         self._sync_to_file()
         
         return self._tasks_path
+    
+    def _load_status_from_file(self) -> Dict[str, TaskStatus]:
+        """
+        기존 tasks.md에서 태스크 상태 로드
+        
+        Returns:
+            Dict[str, TaskStatus]: 태스크 ID → 상태 매핑
+        """
+        status_map = {}
+        
+        if not self._tasks_path or not os.path.exists(self._tasks_path):
+            return status_map
+        
+        try:
+            with open(self._tasks_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            # 체크박스 패턴 매칭: - [x] 2.1.1 번역 (Translate)
+            # 상태: [ ] = NOT_STARTED, [~] = IN_PROGRESS, [x] = COMPLETED, [!] = FAILED
+            pattern = r'-\s+\[(.)\]\s+(\d+\.\d+\.\d+)\s+'
+            
+            for match in re.finditer(pattern, content):
+                checkbox = match.group(1)
+                task_id = match.group(2)
+                
+                if checkbox == 'x':
+                    status_map[task_id] = TaskStatus.COMPLETED
+                elif checkbox == '~':
+                    status_map[task_id] = TaskStatus.IN_PROGRESS
+                elif checkbox == '!':
+                    status_map[task_id] = TaskStatus.FAILED
+                else:  # ' ' or anything else
+                    status_map[task_id] = TaskStatus.NOT_STARTED
+                    
+        except Exception as e:
+            # 파싱 실패 시 빈 맵 반환 (새로 시작)
+            print(f"Warning: tasks.md 파싱 실패, 새로 시작합니다: {e}")
+        
+        return status_map
     
     def get_ready_tasks(self, task_type: TaskType, limit: int = 5) -> List[Task]:
         """

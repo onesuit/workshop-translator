@@ -15,34 +15,53 @@ from agents.workers.validator_worker import validate_single_file
 def initialize_workflow(
     workshop_path: str,
     target_lang: str,
-    files: list
+    files: list,
+    force_reset: bool = False
 ) -> dict:
     """
-    워크플로우 초기화 및 tasks.md 생성
+    워크플로우 초기화 및 tasks.md 생성/로드
     
     이 도구는 번역 워크플로우를 시작하기 전에 호출해야 합니다.
     TaskManager를 초기화하고 tasks.md 파일을 생성합니다.
+    
+    기존 tasks.md가 있으면 상태를 로드하여 이어서 작업할 수 있습니다.
+    force_reset=True로 설정하면 기존 상태를 무시하고 새로 시작합니다.
     
     Args:
         workshop_path: Workshop 디렉토리 경로
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
         files: 번역 대상 파일 목록
+        force_reset: True면 기존 tasks.md 무시하고 새로 생성 (기본: False)
     
     Returns:
         dict: 초기화 결과
             - tasks_path: 생성된 tasks.md 경로
             - total_tasks: 총 태스크 수
             - file_count: 파일 수
+            - resumed: 기존 상태에서 재개 여부
     """
     manager = get_task_manager()
-    tasks_path = manager.initialize(workshop_path, target_lang, files)
+    
+    # 기존 tasks.md 존재 여부 확인
+    import os
+    tasks_path_check = os.path.join(workshop_path, "translation", "tasks.md")
+    had_existing = os.path.exists(tasks_path_check) and not force_reset
+    
+    tasks_path = manager.initialize(workshop_path, target_lang, files, force_reset=force_reset)
     progress = manager.get_progress()
+    
+    if had_existing and progress.completed > 0:
+        message = f"기존 워크플로우 재개. {progress.completed}/{progress.total} 태스크 완료 상태 로드됨."
+    else:
+        message = f"워크플로우 초기화 완료. {len(files)}개 파일, {progress.total}개 태스크 생성됨."
     
     return {
         "tasks_path": tasks_path,
         "total_tasks": progress.total,
         "file_count": len(files),
-        "message": f"워크플로우 초기화 완료. {len(files)}개 파일, {progress.total}개 태스크 생성됨."
+        "resumed": had_existing and progress.completed > 0,
+        "progress": progress.to_dict(),
+        "message": message
     }
 
 
