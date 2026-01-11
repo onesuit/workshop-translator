@@ -153,19 +153,22 @@ def tool_callback_handler(**kwargs):
     # 도구 호출 시작
     if "current_tool_use" in kwargs:
         tool_use = kwargs["current_tool_use"]
-        tool_name = tool_use.get("name", "")
-        tool_input = tool_use.get("input", {})
-        
-        if tool_name:
-            # file_read/file_write는 간략하게 표시
-            if tool_name in ["file_read", "file_write"]:
-                path = tool_input.get("path", tool_input.get("file_path", ""))
-                if path:
-                    if len(path) > 50:
-                        path = "..." + path[-47:]
-                    print(f"{Colors.DIM}   📄 {tool_name}: {path}{Colors.RESET}", flush=True)
-            else:
-                print_tool_start(tool_name, tool_input)
+        # tool_use가 dict인 경우에만 처리
+        if isinstance(tool_use, dict):
+            tool_name = tool_use.get("name", "")
+            tool_input = tool_use.get("input", {})
+            
+            if tool_name:
+                # file_read/file_write는 간략하게 표시
+                if tool_name in ["file_read", "file_write"]:
+                    if isinstance(tool_input, dict):
+                        path = tool_input.get("path", tool_input.get("file_path", ""))
+                        if path:
+                            if len(path) > 50:
+                                path = "..." + path[-47:]
+                            print(f"{Colors.DIM}   📄 {tool_name}: {path}{Colors.RESET}", flush=True)
+                else:
+                    print_tool_start(tool_name, tool_input)
     
     # 텍스트 출력 (data 이벤트)
     if "data" in kwargs:
