@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "WsTranslator"
-version = "0.1.22"
+version = "0.1.23"
 requires-python = ">=3.10"
 description = "Workshop Translator - AI-powered workshop document translation agent"
 readme = "README.md"

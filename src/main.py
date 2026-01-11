@@ -144,74 +144,32 @@ def print_tool_end(tool_name: str, success: bool = True, result_summary: str = N
         print(f"{color}   └─ {status} 완료{Colors.RESET}", flush=True)
 
 
-class ToolCallbackHandler:
-    """도구 호출 콜백 핸들러"""
+def tool_callback_handler(**kwargs):
+    """
+    도구 호출 콜백 핸들러 (함수 기반)
     
-    def __init__(self):
-        self._current_tool = None
-    
-    def on_tool_start(self, tool_name: str, tool_input: dict, **kwargs):
-        """도구 실행 시작 시 호출"""
-        self._current_tool = tool_name
-        # file_read/file_write는 너무 자주 호출되므로 간략하게 표시
-        if tool_name in ["file_read", "file_write"]:
-            path = tool_input.get("path", tool_input.get("file_path", ""))
-            if path:
-                # 경로가 길면 축약
-                if len(path) > 50:
-                    path = "..." + path[-47:]
-                print(f"{Colors.DIM}   📄 {tool_name}: {path}{Colors.RESET}", flush=True)
-        else:
-            print_tool_start(tool_name, tool_input)
-    
-    def on_tool_end(self, tool_name: str, tool_output: any, **kwargs):
-        """도구 실행 완료 시 호출"""
-        # file_read/file_write는 완료 메시지 생략
-        if tool_name in ["file_read", "file_write"]:
-            return
+    strands-agents의 callback_handler는 함수를 기대합니다.
+    """
+    # 도구 호출 시작
+    if "current_tool_use" in kwargs:
+        tool_use = kwargs["current_tool_use"]
+        tool_name = tool_use.get("name", "")
+        tool_input = tool_use.get("input", {})
         
-        # 결과 요약 생성
-        summary = None
-        if isinstance(tool_output, dict):
-            if "message" in tool_output:
-                summary = tool_output["message"]
-            elif "progress" in tool_output:
-                prog = tool_output["progress"]
-                if isinstance(prog, dict):
-                    summary = f"진행률: {prog.get('progress_percent', 0)}%"
-            elif "phase_progress" in tool_output:
-                prog = tool_output["phase_progress"]
-                if isinstance(prog, dict):
-                    summary = f"완료: {prog.get('completed', 0)}/{prog.get('total', 0)}"
-        
-        print_tool_end(tool_name, success=True, result_summary=summary)
-        self._current_tool = None
-    
-    def on_tool_error(self, tool_name: str, error: Exception, **kwargs):
-        """도구 실행 오류 시 호출"""
-        print_tool_end(tool_name, success=False, result_summary=str(error)[:50])
-        self._current_tool = None
-
-
-class ColoredOutput:
-    """stdout을 래핑하여 출력에 색상을 추가하는 클래스"""
-    def __init__(self, original_stdout, color):
-        self.original_stdout = original_stdout
-        self.color = color
-        self.reset = Colors.RESET
-        
-    def write(self, text):
-        if text and text.strip():
-            if '\033[' in text:
-                self.original_stdout.write(text)
+        if tool_name:
+            # file_read/file_write는 간략하게 표시
+            if tool_name in ["file_read", "file_write"]:
+                path = tool_input.get("path", tool_input.get("file_path", ""))
+                if path:
+                    if len(path) > 50:
+                        path = "..." + path[-47:]
+                    print(f"{Colors.DIM}   📄 {tool_name}: {path}{Colors.RESET}", flush=True)
             else:
-                self.original_stdout.write(f"{self.color}{text}{self.reset}")
-        else:
-            self.original_stdout.write(text)
-        self.original_stdout.flush()
+                print_tool_start(tool_name, tool_input)
     
-    def flush(self):
-        self.original_stdout.flush()
+    # 텍스트 출력 (data 이벤트)
+    if "data" in kwargs:
+        print(kwargs["data"], end="", flush=True)
 
 
 def run_cli():
@@ -260,7 +218,7 @@ def run_cli():
             retry_failed_tasks,
             check_phase_completion,
         ],
-        callback_handler=ToolCallbackHandler(),
+        callback_handler=tool_callback_handler,
     )
     
     while True:
@@ -276,14 +234,10 @@ def run_cli():
             
             print(f"\n{Colors.CYAN}{Colors.BOLD}Orchestrator:{Colors.RESET} ", end="", flush=True)
             
-            import sys
-            original_stdout = sys.stdout
-            sys.stdout = ColoredOutput(original_stdout, Colors.CYAN)
-            
             try:
                 response = agent(user_input)
-            finally:
-                sys.stdout = original_stdout
+            except Exception as e:
+                raise e
             
             print()
                 
