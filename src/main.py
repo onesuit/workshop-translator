@@ -94,8 +94,103 @@ class Colors:
     RED = '\033[91m'
     BLUE = '\033[94m'
     MAGENTA = '\033[95m'
+    WHITE = '\033[97m'
     RESET = '\033[0m'
     BOLD = '\033[1m'
+    DIM = '\033[2m'
+
+
+# 도구별 색상 매핑
+TOOL_COLORS = {
+    # 분석/설계 도구 - 파란색 계열
+    "analyze_workshop": Colors.BLUE,
+    "generate_design": Colors.BLUE,
+    # 워크플로우 관리 - 마젠타
+    "initialize_workflow": Colors.MAGENTA,
+    "get_workflow_status": Colors.MAGENTA,
+    "check_phase_completion": Colors.MAGENTA,
+    "retry_failed_tasks": Colors.MAGENTA,
+    # 번역 - 녹색
+    "run_translation_phase": Colors.GREEN,
+    # 검토 - 노란색
+    "run_review_phase": Colors.YELLOW,
+    # 검증 - 시안
+    "run_validate_phase": Colors.CYAN,
+    # 파일 도구 - 흰색 (dim)
+    "file_read": Colors.DIM,
+    "file_write": Colors.DIM,
+}
+
+
+def get_tool_color(tool_name: str) -> str:
+    """도구 이름에 따른 색상 반환"""
+    return TOOL_COLORS.get(tool_name, Colors.WHITE)
+
+
+def print_tool_start(tool_name: str, tool_input: dict = None):
+    """도구 호출 시작 메시지 출력"""
+    color = get_tool_color(tool_name)
+    print(f"\n{color}🔧 [{tool_name}] 실행 중...{Colors.RESET}", flush=True)
+
+
+def print_tool_end(tool_name: str, success: bool = True, result_summary: str = None):
+    """도구 호출 완료 메시지 출력"""
+    color = get_tool_color(tool_name)
+    status = f"{Colors.GREEN}✓{Colors.RESET}" if success else f"{Colors.RED}✗{Colors.RESET}"
+    
+    if result_summary:
+        print(f"{color}   └─ {status} {result_summary}{Colors.RESET}", flush=True)
+    else:
+        print(f"{color}   └─ {status} 완료{Colors.RESET}", flush=True)
+
+
+class ToolCallbackHandler:
+    """도구 호출 콜백 핸들러"""
+    
+    def __init__(self):
+        self._current_tool = None
+    
+    def on_tool_start(self, tool_name: str, tool_input: dict, **kwargs):
+        """도구 실행 시작 시 호출"""
+        self._current_tool = tool_name
+        # file_read/file_write는 너무 자주 호출되므로 간략하게 표시
+        if tool_name in ["file_read", "file_write"]:
+            path = tool_input.get("path", tool_input.get("file_path", ""))
+            if path:
+                # 경로가 길면 축약
+                if len(path) > 50:
+                    path = "..." + path[-47:]
+                print(f"{Colors.DIM}   📄 {tool_name}: {path}{Colors.RESET}", flush=True)
+        else:
+            print_tool_start(tool_name, tool_input)
+    
+    def on_tool_end(self, tool_name: str, tool_output: any, **kwargs):
+        """도구 실행 완료 시 호출"""
+        # file_read/file_write는 완료 메시지 생략
+        if tool_name in ["file_read", "file_write"]:
+            return
+        
+        # 결과 요약 생성
+        summary = None
+        if isinstance(tool_output, dict):
+            if "message" in tool_output:
+                summary = tool_output["message"]
+            elif "progress" in tool_output:
+                prog = tool_output["progress"]
+                if isinstance(prog, dict):
+                    summary = f"진행률: {prog.get('progress_percent', 0)}%"
+            elif "phase_progress" in tool_output:
+                prog = tool_output["phase_progress"]
+                if isinstance(prog, dict):
+                    summary = f"완료: {prog.get('completed', 0)}/{prog.get('total', 0)}"
+        
+        print_tool_end(tool_name, success=True, result_summary=summary)
+        self._current_tool = None
+    
+    def on_tool_error(self, tool_name: str, error: Exception, **kwargs):
+        """도구 실행 오류 시 호출"""
+        print_tool_end(tool_name, success=False, result_summary=str(error)[:50])
+        self._current_tool = None
 
 
 class ColoredOutput:
@@ -164,7 +259,8 @@ def run_cli():
             get_workflow_status,
             retry_failed_tasks,
             check_phase_completion,
-        ]
+        ],
+        callback_handler=ToolCallbackHandler(),
     )
     
     while True:
