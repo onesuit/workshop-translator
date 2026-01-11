@@ -24,6 +24,8 @@ from agents.orchestrator import (
     run_translation_phase,
     run_review_phase,
     run_validate_phase,
+    run_preview_phase,
+    stop_preview,
     get_workflow_status,
     retry_failed_tasks,
     check_phase_completion,
@@ -67,6 +69,8 @@ async def invoke(payload, context):
             run_translation_phase,    # 번역 단계 실행
             run_review_phase,         # 검토 단계 실행
             run_validate_phase,       # 검증 단계 실행
+            run_preview_phase,        # 로컬 프리뷰 실행
+            stop_preview,             # 프리뷰 종료
             get_workflow_status,      # 상태 조회
             retry_failed_tasks,       # 실패 재시도
             check_phase_completion,   # 단계 완료 확인
@@ -116,6 +120,9 @@ TOOL_COLORS = {
     "run_review_phase": Colors.YELLOW,
     # 검증 - 시안
     "run_validate_phase": Colors.CYAN,
+    # 프리뷰 - 녹색 (밝은)
+    "run_preview_phase": Colors.GREEN,
+    "stop_preview": Colors.RED,
     # 파일 도구 - 흰색 (dim)
     "file_read": Colors.DIM,
     "file_write": Colors.DIM,
@@ -193,6 +200,7 @@ def run_cli():
     print("  4. run_translation_phase → 번역 실행")
     print("  5. run_review_phase → 품질 검토")
     print("  6. run_validate_phase → 구조 검증")
+    print("  7. run_preview_phase → 로컬 프리뷰")
     print("\n종료하려면 'exit' 또는 'quit'를 입력하세요.\n")
     
     # Conversation Manager 설정
@@ -217,6 +225,8 @@ def run_cli():
             run_translation_phase,
             run_review_phase,
             run_validate_phase,
+            run_preview_phase,
+            stop_preview,
             get_workflow_status,
             retry_failed_tasks,
             check_phase_completion,

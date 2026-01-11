@@ -1,6 +1,9 @@
 # Orchestrator 도구 - 중앙 집중식 워크플로우 관리
 
 import os
+import shutil
+import subprocess
+import signal
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional
@@ -11,6 +14,11 @@ from task_manager.types import TaskType, TaskResult
 from agents.workers.translator_worker import translate_single_file
 from agents.workers.reviewer_worker import review_single_file
 from agents.workers.validator_worker import validate_single_file
+
+
+# Preview 프로세스 관리를 위한 전역 변수
+_preview_process = None
+_preview_port = None
 
 
 def _generate_review_report(manager, results: list) -> str:
@@ -602,3 +610,170 @@ def check_phase_completion(phase: str) -> dict:
             result["next_action"] = f"run_{phase}_phase를 호출하여 남은 태스크를 처리하세요."
     
     return result
+
+
+
+# Preview 빌드 파일 경로 (패키지 내부)
+def _get_preview_build_path() -> str:
+    """preview_build 파일 경로 반환"""
+    # 패키지 설치 경로에서 찾기
+    import sys
+    for path in sys.path:
+        candidate = os.path.join(path, "preview_build")
+        if os.path.exists(candidate):
+            return candidate
+    
+    # 현재 모듈 기준으로 찾기
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    # src/agents/orchestrator.py -> src/
+    src_dir = os.path.dirname(os.path.dirname(module_dir))
+    # src/ -> WsTranslator/
+    package_dir = os.path.dirname(src_dir)
+    candidate = os.path.join(package_dir, "preview_build")
+    if os.path.exists(candidate):
+        return candidate
+    
+    # 상위 디렉토리에서 찾기
+    for _ in range(5):
+        candidate = os.path.join(src_dir, "preview_build")
+        if os.path.exists(candidate):
+            return candidate
+        src_dir = os.path.dirname(src_dir)
+    
+    return None
+
+
+@tool
+def run_preview_phase(port: int = 8080) -> dict:
+    """
+    로컬 프리뷰 서버 실행 (Orchestrator 전용)
+    
+    번역된 Workshop을 로컬에서 미리보기 할 수 있습니다.
+    preview_build 파일을 workshop 경로에 복사하고 백그라운드로 실행합니다.
+    
+    프리뷰 서버를 종료하려면 stop_preview를 호출하세요.
+    
+    Args:
+        port: 프리뷰 서버 포트 (기본: 8080)
+    
+    Returns:
+        dict: 프리뷰 서버 정보
+            - url: 프리뷰 URL (http://localhost:8080)
+            - message: 안내 메시지
+    """
+    global _preview_process, _preview_port
+    
+    manager = get_task_manager()
+    
+    if not manager.tasks_path:
+        return {"error": "워크플로우가 초기화되지 않았습니다. initialize_workflow를 먼저 호출하세요."}
+    
+    # 이미 실행 중인 프로세스가 있으면 종료
+    if _preview_process is not None:
+        try:
+            _preview_process.terminate()
+            _preview_process.wait(timeout=5)
+        except:
+            pass
+        _preview_process = None
+    
+    # Workshop 경로 (사용자가 initialize_workflow에서 지정한 경로)
+    workshop_path = manager._workshop_path
+    
+    if not workshop_path:
+        return {"error": "Workshop 경로를 찾을 수 없습니다."}
+    
+    # preview_build 파일 찾기
+    preview_build_src = _get_preview_build_path()
+    
+    if not preview_build_src:
+        return {
+            "error": "preview_build 파일을 찾을 수 없습니다.",
+            "hint": "WsTranslator 패키지에 preview_build 파일이 포함되어 있는지 확인하세요."
+        }
+    
+    # Workshop 루트 경로에 복사
+    preview_build_dst = os.path.join(workshop_path, "preview_build")
+    
+    try:
+        shutil.copy2(preview_build_src, preview_build_dst)
+        # 실행 권한 부여
+        os.chmod(preview_build_dst, 0o755)
+    except Exception as e:
+        return {"error": f"preview_build 복사 실패: {e}"}
+    
+    # 백그라운드로 실행
+    try:
+        _preview_process = subprocess.Popen(
+            [preview_build_dst, "-port", str(port)],
+            cwd=workshop_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True  # 독립적인 프로세스 그룹
+        )
+        _preview_port = port
+        
+        # 잠시 대기하여 프로세스가 정상 시작되었는지 확인
+        import time
+        time.sleep(2)
+        
+        if _preview_process.poll() is not None:
+            # 프로세스가 종료됨
+            stdout, stderr = _preview_process.communicate()
+            return {
+                "error": "프리뷰 서버 시작 실패",
+                "stderr": stderr.decode("utf-8", errors="ignore")[:500]
+            }
+        
+        return {
+            "url": f"http://localhost:{port}",
+            "message": f"🚀 프리뷰 서버가 시작되었습니다!\n\n"
+                      f"📍 URL: http://localhost:{port}\n"
+                      f"📁 Workshop 경로: {workshop_path}\n\n"
+                      f"브라우저에서 위 URL을 열어 번역 결과를 확인하세요.\n"
+                      f"파일 변경 시 자동으로 새로고침됩니다.\n\n"
+                      f"⚠️ 프리뷰를 종료하려면 'stop_preview'를 호출하세요.",
+            "workshop_path": workshop_path,
+            "pid": _preview_process.pid,
+        }
+        
+    except Exception as e:
+        return {"error": f"프리뷰 서버 실행 실패: {e}"}
+
+
+@tool
+def stop_preview() -> dict:
+    """
+    로컬 프리뷰 서버 종료
+    
+    run_preview_phase로 시작한 프리뷰 서버를 종료합니다.
+    
+    Returns:
+        dict: 종료 결과
+    """
+    global _preview_process, _preview_port
+    
+    if _preview_process is None:
+        return {"message": "실행 중인 프리뷰 서버가 없습니다."}
+    
+    try:
+        # 프로세스 그룹 전체 종료
+        os.killpg(os.getpgid(_preview_process.pid), signal.SIGTERM)
+        _preview_process.wait(timeout=5)
+        
+        port = _preview_port
+        _preview_process = None
+        _preview_port = None
+        
+        return {
+            "message": f"✅ 프리뷰 서버가 종료되었습니다. (포트: {port})",
+            "stopped": True
+        }
+    except subprocess.TimeoutExpired:
+        # 강제 종료
+        os.killpg(os.getpgid(_preview_process.pid), signal.SIGKILL)
+        _preview_process = None
+        _preview_port = None
+        return {"message": "프리뷰 서버가 강제 종료되었습니다.", "stopped": True}
+    except Exception as e:
+        return {"error": f"프리뷰 서버 종료 실패: {e}"}

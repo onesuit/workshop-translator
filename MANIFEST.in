@@ -1,6 +1,7 @@
 # 포함할 파일
 include README.md
 include LICENSE
+include preview_build
 
 # prompts 디렉토리의 requirements.md 포함
 include src/prompts/requirements.md
