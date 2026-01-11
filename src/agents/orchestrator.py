@@ -1,6 +1,8 @@
 # Orchestrator 도구 - 중앙 집중식 워크플로우 관리
 
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import List, Optional
 from strands import tool
 
@@ -9,6 +11,171 @@ from task_manager.types import TaskType, TaskResult
 from agents.workers.translator_worker import translate_single_file
 from agents.workers.reviewer_worker import review_single_file
 from agents.workers.validator_worker import validate_single_file
+
+
+def _generate_review_report(manager, results: list) -> str:
+    """검토 단계 리포트 생성"""
+    progress = manager.get_phase_progress(TaskType.REVIEW)
+    translate_progress = manager.get_phase_progress(TaskType.TRANSLATE)
+    
+    # 결과 분류
+    passed = [r for r in results if r.success]
+    failed = [r for r in results if not r.success]
+    
+    # 점수 통계
+    scores = []
+    for r in results:
+        if r.metadata and "score" in r.metadata:
+            scores.append(r.metadata["score"])
+    
+    avg_score = sum(scores) / len(scores) if scores else 0
+    
+    report = f"""# 📋 검토(Review) 단계 리포트
+
+생성 시간: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+## 📊 요약
+
+| 항목 | 값 |
+|------|-----|
+| 총 파일 수 | {progress.total} |
+| 검토 완료 | {progress.completed} |
+| 통과 (PASS) | {len(passed)} |
+| 실패 (FAIL) | {len(failed)} |
+| 평균 점수 | {avg_score:.1f}/100 |
+| 진행률 | {progress.progress_percent:.1f}% |
+
+## ✅ 통과한 파일 (PASS)
+
+"""
+    
+    if passed:
+        for r in passed:
+            score = r.metadata.get("score", "-") if r.metadata else "-"
+            path = r.metadata.get("target_path", r.output_path or "-") if r.metadata else "-"
+            report += f"- [{score}점] `{path}`\n"
+    else:
+        report += "_통과한 파일이 없습니다._\n"
+    
+    report += "\n## ❌ 실패한 파일 (FAIL)\n\n"
+    
+    if failed:
+        for r in failed:
+            score = r.metadata.get("score", "-") if r.metadata else "-"
+            path = r.metadata.get("target_path", "-") if r.metadata else "-"
+            issues = r.metadata.get("issues", r.error or "-") if r.metadata else (r.error or "-")
+            report += f"### `{path}` ({score}점)\n"
+            report += f"- **문제점**: {issues[:200]}{'...' if len(str(issues)) > 200 else ''}\n\n"
+    else:
+        report += "_실패한 파일이 없습니다._\n"
+    
+    report += f"""
+## 📈 단계별 진행 상황
+
+| 단계 | 완료 | 전체 | 진행률 |
+|------|------|------|--------|
+| 번역 | {translate_progress.completed} | {translate_progress.total} | {translate_progress.progress_percent:.1f}% |
+| 검토 | {progress.completed} | {progress.total} | {progress.progress_percent:.1f}% |
+
+## 🔄 다음 단계
+
+"""
+    
+    if progress.is_complete:
+        report += "검토 단계가 완료되었습니다. `run_validate_phase`를 호출하여 검증 단계를 진행하세요.\n"
+    elif failed:
+        report += f"{len(failed)}개 파일이 검토에 실패했습니다. `retry_failed_tasks('review')`로 재시도하거나 수동으로 수정하세요.\n"
+    else:
+        report += "검토가 진행 중입니다. `run_review_phase`를 다시 호출하여 남은 파일을 처리하세요.\n"
+    
+    return report
+
+
+def _generate_validate_report(manager, results: list) -> str:
+    """검증 단계 리포트 생성"""
+    progress = manager.get_phase_progress(TaskType.VALIDATE)
+    translate_progress = manager.get_phase_progress(TaskType.TRANSLATE)
+    review_progress = manager.get_phase_progress(TaskType.REVIEW)
+    overall = manager.get_progress()
+    
+    # 결과 분류
+    passed = [r for r in results if r.success]
+    failed = [r for r in results if not r.success]
+    
+    report = f"""# 📋 검증(Validate) 단계 리포트
+
+생성 시간: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+## 📊 요약
+
+| 항목 | 값 |
+|------|-----|
+| 총 파일 수 | {progress.total} |
+| 검증 완료 | {progress.completed} |
+| 통과 (PASS) | {len(passed)} |
+| 실패 (FAIL) | {len(failed)} |
+| 진행률 | {progress.progress_percent:.1f}% |
+
+## ✅ 검증 통과 파일
+
+"""
+    
+    if passed:
+        for r in passed:
+            path = r.metadata.get("target_path", r.output_path or "-") if r.metadata else "-"
+            report += f"- `{path}`\n"
+    else:
+        report += "_검증 통과한 파일이 없습니다._\n"
+    
+    report += "\n## ❌ 검증 실패 파일\n\n"
+    
+    if failed:
+        for r in failed:
+            path = r.metadata.get("target_path", "-") if r.metadata else "-"
+            issues = r.metadata.get("issues", r.error or "-") if r.metadata else (r.error or "-")
+            report += f"### `{path}`\n"
+            report += f"- **문제점**: {issues[:300]}{'...' if len(str(issues)) > 300 else ''}\n\n"
+    else:
+        report += "_검증 실패한 파일이 없습니다._\n"
+    
+    report += f"""
+## 📈 전체 워크플로우 진행 상황
+
+| 단계 | 완료 | 전체 | 진행률 | 상태 |
+|------|------|------|--------|------|
+| 번역 | {translate_progress.completed} | {translate_progress.total} | {translate_progress.progress_percent:.1f}% | {'✅' if translate_progress.is_complete else '🔄'} |
+| 검토 | {review_progress.completed} | {review_progress.total} | {review_progress.progress_percent:.1f}% | {'✅' if review_progress.is_complete else '🔄'} |
+| 검증 | {progress.completed} | {progress.total} | {progress.progress_percent:.1f}% | {'✅' if progress.is_complete else '🔄'} |
+
+**전체 진행률**: {overall.progress_percent:.1f}% ({overall.completed}/{overall.total})
+
+## 🎯 최종 상태
+
+"""
+    
+    if overall.is_complete and not overall.has_failures:
+        report += "🎉 **모든 단계가 성공적으로 완료되었습니다!**\n\n번역된 파일들을 확인하고 배포할 준비가 되었습니다.\n"
+    elif overall.is_complete:
+        report += f"⚠️ **워크플로우가 완료되었지만 일부 실패가 있습니다.**\n\n실패한 파일들을 수동으로 확인하거나 `retry_failed_tasks`로 재시도하세요.\n"
+    else:
+        report += "🔄 **워크플로우가 아직 진행 중입니다.**\n\n남은 단계를 계속 진행하세요.\n"
+    
+    return report
+
+
+def _save_report(manager, report_content: str, report_name: str) -> str:
+    """리포트를 파일로 저장"""
+    if not manager.tasks_path:
+        return None
+    
+    # tasks.md와 같은 디렉토리에 저장
+    report_dir = os.path.dirname(manager.tasks_path)
+    report_path = os.path.join(report_dir, report_name)
+    
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(report_content)
+    
+    return report_path
 
 
 @tool
@@ -202,12 +369,21 @@ def run_review_phase(max_concurrent: int = 5) -> dict:
     
     progress = manager.get_phase_progress(TaskType.REVIEW)
     
+    # 리포트 생성 (단계 완료 또는 결과가 있을 때)
+    report_path = None
+    if results:
+        # 전체 결과를 포함하여 리포트 생성
+        all_results = results  # 현재 실행 결과
+        report_content = _generate_review_report(manager, all_results)
+        report_path = _save_report(manager, report_content, "review_report.md")
+    
     return {
         "executed": len(results),
         "succeeded": sum(1 for r in results if r.success),
         "failed": sum(1 for r in results if not r.success),
         "phase_progress": progress.to_dict(),
         "results": [r.to_dict() for r in results],
+        "report_path": report_path,
     }
 
 
@@ -271,12 +447,19 @@ def run_validate_phase(max_concurrent: int = 5) -> dict:
     
     progress = manager.get_phase_progress(TaskType.VALIDATE)
     
+    # 리포트 생성 (단계 완료 또는 결과가 있을 때)
+    report_path = None
+    if results:
+        report_content = _generate_validate_report(manager, results)
+        report_path = _save_report(manager, report_content, "validate_report.md")
+    
     return {
         "executed": len(results),
         "succeeded": sum(1 for r in results if r.success),
         "failed": sum(1 for r in results if not r.success),
         "phase_progress": progress.to_dict(),
         "results": [r.to_dict() for r in results],
+        "report_path": report_path,
     }
 
 
