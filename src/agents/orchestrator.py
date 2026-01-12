@@ -659,14 +659,17 @@ def check_phase_completion(phase: str) -> dict:
 
 # Preview 빌드 파일 경로 (패키지 내부)
 def _get_preview_build_path() -> str:
-    """preview_build 파일 경로 반환"""
+    """
+    preview_build 파일 경로 반환 (로컬에 있는 경우만)
+    
+    없으면 None 반환 (다운로드는 run_preview_phase에서 처리)
+    """
     import sys
     
     # 1. 현재 모듈과 같은 디렉토리에서 찾기 (패키지 설치 시)
     module_dir = os.path.dirname(os.path.abspath(__file__))
     
     # agents/orchestrator.py -> agents/ -> src/ (또는 설치된 패키지 루트)
-    # 설치된 패키지에서는 preview_build가 루트에 있음
     package_root = os.path.dirname(os.path.dirname(module_dir))
     candidate = os.path.join(package_root, "preview_build")
     if os.path.exists(candidate):
@@ -685,7 +688,6 @@ def _get_preview_build_path() -> str:
             return candidate
     
     # 4. 개발 환경: WsTranslator 디렉토리에서 찾기
-    # src/agents/orchestrator.py -> src/ -> WsTranslator/
     dev_root = os.path.dirname(package_root)
     candidate = os.path.join(dev_root, "preview_build")
     if os.path.exists(candidate):
@@ -700,6 +702,60 @@ def _get_preview_build_path() -> str:
         current = os.path.dirname(current)
     
     return None
+
+
+def _get_preview_build_download_url() -> str:
+    """
+    현재 OS/아키텍처에 맞는 preview_build 다운로드 URL 반환
+    """
+    import platform
+    
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    
+    base_url = "https://artifacts.us-east-1.prod.workshops.aws/v2/cli"
+    
+    if system == "darwin":
+        # macOS
+        if machine == "arm64":
+            return f"{base_url}/osx_arm/preview_build"
+        else:
+            # Intel Mac (x86_64)
+            return f"{base_url}/osx/preview_build"
+    elif system == "linux":
+        return f"{base_url}/linux/preview_build"
+    elif system == "windows":
+        return f"{base_url}/windows/preview_build.exe"
+    
+    # 지원하지 않는 OS
+    return None
+
+
+def _download_preview_build(dest_path: str) -> bool:
+    """
+    preview_build 파일을 다운로드
+    
+    Args:
+        dest_path: 저장할 경로
+    
+    Returns:
+        bool: 성공 여부
+    """
+    import urllib.request
+    
+    download_url = _get_preview_build_download_url()
+    if not download_url:
+        return False
+    
+    try:
+        print(f"preview_build 다운로드 중... ({download_url})")
+        urllib.request.urlretrieve(download_url, dest_path)
+        os.chmod(dest_path, 0o755)
+        print(f"preview_build 다운로드 완료: {dest_path}")
+        return True
+    except Exception as e:
+        print(f"preview_build 다운로드 실패: {e}")
+        return False
 
 
 @tool
@@ -758,24 +814,16 @@ def run_preview_phase(port: int = 8080, tasks_path: str = None) -> dict:
             pass
         _preview_process = None
     
-    # preview_build 파일 찾기
-    preview_build_src = _get_preview_build_path()
-    
-    if not preview_build_src:
-        return {
-            "error": "preview_build 파일을 찾을 수 없습니다.",
-            "hint": "WsTranslator 패키지에 preview_build 파일이 포함되어 있는지 확인하세요."
-        }
-    
-    # Workshop 루트 경로에 복사
+    # preview_build 파일 확인 또는 다운로드
     preview_build_dst = os.path.join(workshop_path, "preview_build")
     
-    try:
-        shutil.copy2(preview_build_src, preview_build_dst)
-        # 실행 권한 부여
-        os.chmod(preview_build_dst, 0o755)
-    except Exception as e:
-        return {"error": f"preview_build 복사 실패: {e}"}
+    # workshop에 없으면 AWS에서 다운로드
+    if not os.path.exists(preview_build_dst):
+        if not _download_preview_build(preview_build_dst):
+            return {
+                "error": "preview_build 다운로드에 실패했습니다.",
+                "hint": "네트워크 연결을 확인하거나 수동으로 preview_build를 workshop 경로에 복사하세요."
+            }
     
     # 백그라운드로 실행
     try:

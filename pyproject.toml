@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "WsTranslator"
-version = "0.1.29"
+version = "0.1.30"
 requires-python = ">=3.10"
 description = "Workshop Translator - AI-powered workshop document translation agent"
 readme = "README.md"
@@ -53,4 +53,11 @@ remote = [
 wstranslator = "cli:main"
 
 [tool.setuptools.package-data]
-"*" = ["preview_build"]
+"*" = ["preview_build", "prompts/*.md"]
+
+[tool.setuptools]
+include-package-data = true
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
