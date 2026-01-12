@@ -186,6 +186,41 @@ def _save_report(manager, report_content: str, report_name: str) -> str:
     return report_path
 
 
+def _add_translation_to_gitignore(workshop_path: str) -> bool:
+    """
+    workshop의 .gitignore에 translation/ 폴더 추가
+    
+    Args:
+        workshop_path: Workshop 디렉토리 경로
+    
+    Returns:
+        bool: 추가 여부 (이미 있으면 False)
+    """
+    gitignore_path = os.path.join(workshop_path, ".gitignore")
+    translation_entry = "translation/"
+    
+    # 기존 .gitignore 내용 확인
+    existing_content = ""
+    if os.path.exists(gitignore_path):
+        with open(gitignore_path, "r", encoding="utf-8") as f:
+            existing_content = f.read()
+        
+        # 이미 translation/ 항목이 있는지 확인
+        lines = existing_content.strip().split("\n")
+        for line in lines:
+            if line.strip() == translation_entry or line.strip() == "translation":
+                return False  # 이미 존재
+    
+    # translation/ 추가
+    with open(gitignore_path, "a", encoding="utf-8") as f:
+        # 파일이 비어있지 않고 마지막에 개행이 없으면 추가
+        if existing_content and not existing_content.endswith("\n"):
+            f.write("\n")
+        f.write(f"\n# WsTranslator 번역 작업 폴더\n{translation_entry}\n")
+    
+    return True
+
+
 @tool
 def initialize_workflow(
     workshop_path: str,
@@ -202,6 +237,8 @@ def initialize_workflow(
     기존 tasks.md가 있으면 상태를 로드하여 이어서 작업할 수 있습니다.
     force_reset=True로 설정하면 기존 상태를 무시하고 새로 시작합니다.
     
+    또한 workshop의 .gitignore에 translation/ 폴더를 자동으로 추가합니다.
+    
     Args:
         workshop_path: Workshop 디렉토리 경로
         target_lang: 타겟 언어 코드 (ko, ja, zh 등)
@@ -214,27 +251,34 @@ def initialize_workflow(
             - total_tasks: 총 태스크 수
             - file_count: 파일 수
             - resumed: 기존 상태에서 재개 여부
+            - gitignore_updated: .gitignore 업데이트 여부
     """
     manager = get_task_manager()
     
     # 기존 tasks.md 존재 여부 확인
-    import os
     tasks_path_check = os.path.join(workshop_path, "translation", "tasks.md")
     had_existing = os.path.exists(tasks_path_check) and not force_reset
     
     tasks_path = manager.initialize(workshop_path, target_lang, files, force_reset=force_reset)
     progress = manager.get_progress()
     
+    # .gitignore에 translation/ 추가
+    gitignore_updated = _add_translation_to_gitignore(workshop_path)
+    
     if had_existing and progress.completed > 0:
         message = f"기존 워크플로우 재개. {progress.completed}/{progress.total} 태스크 완료 상태 로드됨."
     else:
         message = f"워크플로우 초기화 완료. {len(files)}개 파일, {progress.total}개 태스크 생성됨."
+    
+    if gitignore_updated:
+        message += " (.gitignore에 translation/ 추가됨)"
     
     return {
         "tasks_path": tasks_path,
         "total_tasks": progress.total,
         "file_count": len(files),
         "resumed": had_existing and progress.completed > 0,
+        "gitignore_updated": gitignore_updated,
         "progress": progress.to_dict(),
         "message": message
     }
@@ -659,7 +703,7 @@ def _get_preview_build_path() -> str:
 
 
 @tool
-def run_preview_phase(port: int = 8080) -> dict:
+def run_preview_phase(port: int = 8080, tasks_path: str = None) -> dict:
     """
     로컬 프리뷰 서버 실행 (Orchestrator 전용)
     
@@ -670,6 +714,8 @@ def run_preview_phase(port: int = 8080) -> dict:
     
     Args:
         port: 프리뷰 서버 포트 (기본: 8080)
+        tasks_path: tasks.md 파일 경로 (워크플로우 초기화 안 된 경우 필수)
+                    예: /path/to/workshop/translation/tasks.md
     
     Returns:
         dict: 프리뷰 서버 정보
@@ -680,8 +726,28 @@ def run_preview_phase(port: int = 8080) -> dict:
     
     manager = get_task_manager()
     
-    if not manager.tasks_path:
-        return {"error": "워크플로우가 초기화되지 않았습니다. initialize_workflow를 먼저 호출하세요."}
+    # Workshop 경로 결정
+    workshop_path = None
+    
+    if manager.tasks_path:
+        # 워크플로우가 초기화된 경우
+        workshop_path = manager._workshop_path
+    elif tasks_path:
+        # tasks_path에서 workshop 경로 추출
+        # tasks_path: /path/to/workshop/translation/tasks.md
+        # workshop_path: /path/to/workshop
+        if tasks_path.endswith("tasks.md"):
+            translation_dir = os.path.dirname(tasks_path)
+            workshop_path = os.path.dirname(translation_dir)
+        else:
+            # tasks_path가 translation 디렉토리인 경우
+            workshop_path = os.path.dirname(tasks_path)
+    
+    if not workshop_path:
+        return {
+            "error": "워크플로우가 초기화되지 않았습니다.",
+            "hint": "tasks_path 파라미터에 tasks.md 파일 경로를 제공하세요. 예: /path/to/workshop/translation/tasks.md"
+        }
     
     # 이미 실행 중인 프로세스가 있으면 종료
     if _preview_process is not None:
@@ -691,12 +757,6 @@ def run_preview_phase(port: int = 8080) -> dict:
         except:
             pass
         _preview_process = None
-    
-    # Workshop 경로 (사용자가 initialize_workflow에서 지정한 경로)
-    workshop_path = manager._workshop_path
-    
-    if not workshop_path:
-        return {"error": "Workshop 경로를 찾을 수 없습니다."}
     
     # preview_build 파일 찾기
     preview_build_src = _get_preview_build_path()

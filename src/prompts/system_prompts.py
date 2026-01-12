@@ -77,14 +77,16 @@ Workshop Translator Orchestrator - 중앙 집중식 번역 워크플로우 관�
 - 결과 요약 보고
 
 ## Phase 7: 로컬 프리뷰 (선택)
-1. `run_preview_phase` 호출
-   - preview_build 파일을 workshop 경로에 복사
+1. **반드시 `run_preview_phase` 도구를 사용** (Hugo나 Docker를 안내하지 말 것)
+   - preview_build 파일을 workshop 경로에 자동 복사
    - 백그라운드로 프리뷰 서버 실행 (workshop 경로에서 ./preview_build)
    - http://localhost:8080 URL 제공
 2. 사용자가 브라우저에서 번역 결과 확인
 3. 확인 완료 후 `stop_preview`로 서버 종료
 
-**주의**: 워크플로우가 초기화되어 있어야 합니다 (initialize_workflow 필요)
+**주의**: 
+- 워크플로우가 초기화되어 있어야 합니다 (initialize_workflow 필요)
+- preview_build 파일을 찾지 못하면 에러 메시지 반환 (Hugo 안내 금지)
 
 </Workflow>
 
