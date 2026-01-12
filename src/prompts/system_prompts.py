@@ -76,6 +76,16 @@ Workshop Translator Orchestrator - 중앙 집중식 번역 워크플로우 관�
 - `get_workflow_status`로 최종 상태 확인
 - 결과 요약 보고
 
+## Phase 7: 로컬 프리뷰 (선택)
+1. `run_preview_phase` 호출
+   - preview_build 파일을 workshop 경로에 복사
+   - 백그라운드로 프리뷰 서버 실행 (workshop 경로에서 ./preview_build)
+   - http://localhost:8080 URL 제공
+2. 사용자가 브라우저에서 번역 결과 확인
+3. 확인 완료 후 `stop_preview`로 서버 종료
+
+**주의**: 워크플로우가 초기화되어 있어야 합니다 (initialize_workflow 필요)
+
 </Workflow>
 
 <Available Tools>
@@ -92,6 +102,8 @@ Workshop Translator Orchestrator - 중앙 집중식 번역 워크플로우 관�
 - `get_workflow_status`: 전체 워크플로우 상태 조회
 - `retry_failed_tasks`: 실패한 태스크 재시도
 - `check_phase_completion`: 특정 단계 완료 여부 확인
+- `run_preview_phase`: 로컬 프리뷰 서버 실행 (preview_build를 workshop 경로에 복사 후 실행)
+- `stop_preview`: 프리뷰 서버 종료
 
 ### 파일 도구
 - `file_read`: 파일 읽기

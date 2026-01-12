@@ -616,29 +616,44 @@ def check_phase_completion(phase: str) -> dict:
 # Preview 빌드 파일 경로 (패키지 내부)
 def _get_preview_build_path() -> str:
     """preview_build 파일 경로 반환"""
-    # 패키지 설치 경로에서 찾기
     import sys
+    
+    # 1. 현재 모듈과 같은 디렉토리에서 찾기 (패키지 설치 시)
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # agents/orchestrator.py -> agents/ -> src/ (또는 설치된 패키지 루트)
+    # 설치된 패키지에서는 preview_build가 루트에 있음
+    package_root = os.path.dirname(os.path.dirname(module_dir))
+    candidate = os.path.join(package_root, "preview_build")
+    if os.path.exists(candidate):
+        return candidate
+    
+    # 2. 같은 레벨 (agents와 같은 레벨)에서 찾기
+    parent_dir = os.path.dirname(module_dir)
+    candidate = os.path.join(parent_dir, "preview_build")
+    if os.path.exists(candidate):
+        return candidate
+    
+    # 3. sys.path에서 찾기
     for path in sys.path:
         candidate = os.path.join(path, "preview_build")
         if os.path.exists(candidate):
             return candidate
     
-    # 현재 모듈 기준으로 찾기
-    module_dir = os.path.dirname(os.path.abspath(__file__))
-    # src/agents/orchestrator.py -> src/
-    src_dir = os.path.dirname(os.path.dirname(module_dir))
-    # src/ -> WsTranslator/
-    package_dir = os.path.dirname(src_dir)
-    candidate = os.path.join(package_dir, "preview_build")
+    # 4. 개발 환경: WsTranslator 디렉토리에서 찾기
+    # src/agents/orchestrator.py -> src/ -> WsTranslator/
+    dev_root = os.path.dirname(package_root)
+    candidate = os.path.join(dev_root, "preview_build")
     if os.path.exists(candidate):
         return candidate
     
-    # 상위 디렉토리에서 찾기
-    for _ in range(5):
-        candidate = os.path.join(src_dir, "preview_build")
+    # 5. 상위 디렉토리 탐색
+    current = module_dir
+    for _ in range(6):
+        candidate = os.path.join(current, "preview_build")
         if os.path.exists(candidate):
             return candidate
-        src_dir = os.path.dirname(src_dir)
+        current = os.path.dirname(current)
     
     return None
 
