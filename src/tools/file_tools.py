@@ -6,8 +6,41 @@ import yaml
 from pathlib import Path
 from typing import Optional, Tuple
 
-# 지원하는 언어 코드 목록
-SUPPORTED_LANG_CODES = ["en", "ko", "ja", "zh", "es", "fr", "de", "pt", "it", "ru"]
+# 지원하는 언어 코드 목록 (파일명에 사용되는 2자리 코드)
+SUPPORTED_LANG_CODES = [
+    "en",  # English (en-US)
+    "es",  # Español (es-US)
+    "ja",  # 日本語 (ja-JP)
+    "fr",  # Français (fr-FR)
+    "ko",  # 한국어 (ko-KR)
+    "pt",  # Português (pt-BR)
+    "de",  # Deutsch (de-DE)
+    "it",  # Italiano (it-IT)
+    "zh",  # 中文 (zh-CN, zh-TW)
+    "uk",  # українська (uk-UA)
+    "pl",  # Polski (pl-PL)
+    "id",  # Bahasa Indonesia (id-ID)
+    "nl",  # Nederlands (nl-NL)
+    "ar",  # العربية (ar-AE)
+]
+
+# 전체 locale 코드 매핑 (contentspec.yaml용)
+LOCALE_CODE_MAP = {
+    "en": "en-US",
+    "es": "es-US",
+    "ja": "ja-JP",
+    "fr": "fr-FR",
+    "ko": "ko-KR",
+    "pt": "pt-BR",
+    "de": "de-DE",
+    "it": "it-IT",
+    "zh": "zh-CN",  # 기본값, zh-TW도 가능
+    "uk": "uk-UA",
+    "pl": "pl-PL",
+    "id": "id-ID",
+    "nl": "nl-NL",
+    "ar": "ar-AE",
+}
 
 
 def read_workshop_file(file_path: str) -> str:

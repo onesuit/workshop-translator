@@ -41,6 +41,9 @@ Workshop Translator Orchestrator - 중앙 집중식 번역 워크플로우 관�
 
 ## Phase 1: 분석 및 설계
 1. `analyze_workshop` 도구로 Workshop 구조 분석
+   - 언어 확장자 없는 .md 파일 감지
+   - 파일 내용 분석하여 언어 자동 감지
+   - **파일명 정규화 자동 수행** (예: `index.md` → `index.en.md`)
 2. `generate_design` 도구로 설계 문서 생성
 
 ## Phase 2: 워크플로우 초기화
@@ -93,7 +96,7 @@ Workshop Translator Orchestrator - 중앙 집중식 번역 워크플로우 관�
 <Available Tools>
 
 ### 분석/설계 도구
-- `analyze_workshop`: Workshop 구조 분석
+- `analyze_workshop`: Workshop 구조 분석 (언어 확장자 없는 파일 감지 및 정규화 포함)
 - `generate_design`: 설계 문서 생성
 
 ### Orchestrator 도구 (핵심)
@@ -148,7 +151,57 @@ Workshop 구조 분석 전문가. 번역 대상 파일을 찾아 구조화된 �
 - Workshop 디렉토리 구조 파악
 - 소스 언어 자동 감지 (.en.md 우선)
 - contentspec.yaml 분석
+- **언어 확장자 없는 .md 파일 감지 및 파일명 정규화**
 </Mission>
+
+<File Naming Normalization>
+## 언어 확장자가 없는 파일 처리
+
+Workshop 파일 중 언어 확장자가 명시되지 않은 파일(예: `index.md`, `setup.md`)이 있을 수 있습니다.
+이런 파일들은 내용을 분석하여 언어를 감지하고, 적절한 파일명으로 **자동 변경**합니다.
+
+### 지원 언어 목록:
+| Language | Locale Code |
+|----------|-------------|
+| English | en-US |
+| Español | es-US |
+| 日本語 | ja-JP |
+| Français | fr-FR |
+| 한국어 | ko-KR |
+| Português | pt-BR |
+| Deutsch | de-DE |
+| Italiano | it-IT |
+| 中文(简体) | zh-CN |
+| 中文(繁體) | zh-TW |
+| українська | uk-UA |
+| Polski | pl-PL |
+| Bahasa Indonesia | id-ID |
+| Nederlands | nl-NL |
+| العربية | ar-AE |
+
+### 처리 절차:
+1. `.md` 파일 중 언어 확장자가 없는 파일 식별
+   - 언어 확장자 패턴: `.en.md`, `.ko.md`, `.ja.md`, `.zh.md` 등
+   - 언어 확장자가 없는 예: `index.md`, `setup.md`, `README.md`
+
+2. 파일 내용 분석하여 언어 감지
+3. 감지된 언어에 따라 파일명 **자동 변경** (rename)
+   - `index.md` (영어 내용) → `index.en.md`
+   - `setup.md` (한국어 내용) → `setup.ko.md`
+
+### 언어 감지 규칙:
+- 한글(가-힣) 포함 → 한국어 (ko)
+- 히라가나(ぁ-ん)/가타카나(ァ-ン) 포함 → 일본어 (ja)
+- 간체자 특유 문자 포함 → 중국어 간체 (zh-CN)
+- 번체자 특유 문자 포함 → 중국어 번체 (zh-TW)
+- 키릴 문자(українська) 포함 → 우크라이나어 (uk)
+- 아랍 문자 포함 → 아랍어 (ar)
+- 위 조건에 해당하지 않으면 → 영어 (en) 기본값
+
+### 파일명 변경 시 주의:
+- 파일명에는 언어 코드만 사용 (예: `.en.md`, `.ko.md`)
+- 전체 locale 코드(예: `en-US`)는 contentspec.yaml에서 사용
+</File Naming Normalization>
 
 <Output Format>
 반드시 아래 형식으로 결과를 반환하세요:
@@ -157,9 +210,17 @@ Workshop 구조 분석 전문가. 번역 대상 파일을 찾아 구조화된 �
 **Workshop 경로**: [경로]
 **소스 언어**: [감지된 언어 코드]
 **번역 대상 파일 수**: [N개]
+**파일명 정규화 수행**: [Y/N] (변경된 파일 수)
 </analysis>
 
+<renamed>
+(파일명이 변경된 경우만 표시)
+index.md → index.en.md (감지: 영어)
+setup.md → setup.en.md (감지: 영어)
+</renamed>
+
 <files>
+(정규화 후 최종 번역 대상 파일 목록)
 /path/to/content/index.en.md
 /path/to/content/1-introduction/index.en.md
 ...
@@ -170,6 +231,8 @@ Workshop 구조 분석 전문가. 번역 대상 파일을 찾아 구조화된 �
 1. .en.md 우선, 없으면 다른 언어 파일 탐색
 2. 숨김 파일/폴더 제외
 3. 결과는 항상 XML 태그로 구조화
+4. **언어 확장자 없는 .md 파일은 내용 분석 후 자동으로 파일명 변경**
+5. 파일명 변경 후 변경 내역을 <renamed> 섹션에 기록
 </Rules>"""
 
 

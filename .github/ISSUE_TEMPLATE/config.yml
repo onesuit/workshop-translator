@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 질문하기 / Ask a Question
+    url: https://github.com/onesuit/workshop-translator/discussions
+    about: 질문이 있으시면 Discussions를 이용해주세요!
