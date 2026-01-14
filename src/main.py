@@ -89,6 +89,26 @@ async def invoke(payload, context):
             log.info(f"도구 호출: {tool_name}")
 
 
+def sanitize_input(text: str) -> str:
+    """
+    사용자 입력에서 JSON 직렬화 문제를 일으키는 문자를 제거합니다.
+    복사/붙여넣기 시 포함될 수 있는 숨겨진 제어 문자를 처리합니다.
+    """
+    if not text:
+        return text
+    
+    # NULL 바이트 제거
+    text = text.replace('\x00', '')
+    
+    # JSON 직렬화 문제를 일으키는 제어 문자 제거 (탭, 줄바꿈 제외)
+    text = ''.join(
+        char for char in text 
+        if char >= ' ' or char in '\t\n\r'
+    )
+    
+    return text.strip()
+
+
 # ANSI 색상 코드
 class Colors:
     """터미널 색상 코드"""
@@ -236,7 +256,7 @@ def run_cli():
     
     while True:
         try:
-            user_input = input("\n사용자: ").strip()
+            user_input = sanitize_input(input("\n사용자: "))
             
             if not user_input:
                 continue
@@ -250,7 +270,12 @@ def run_cli():
             try:
                 response = agent(user_input)
             except Exception as e:
-                raise e
+                # 에러 발생 시 마지막 사용자 메시지 제거하여 상태 복구
+                if agent.messages and agent.messages[-1]["role"] == "user":
+                    agent.messages.pop()
+                print(f"\n{Colors.RED}오류 발생: {e}{Colors.RESET}")
+                print(f"{Colors.YELLOW}💡 대화 상태를 복구했습니다. 다시 시도해주세요.{Colors.RESET}")
+                continue
             
             print()
                 
