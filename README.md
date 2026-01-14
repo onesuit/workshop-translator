@@ -2,6 +2,15 @@
 
 AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입니다.
 
+## 주요 기능
+
+- 🤖 **AI 기반 번역**: Claude 모델(Opus/Sonnet/Haiku)을 활용한 고품질 번역
+- 📚 **AWS 문서 연동**: MCP를 통한 AWS 공식 문서 참조로 정확한 용어 사용
+- ⚡ **병렬 처리**: ThreadPoolExecutor로 최대 5개 파일 동시 처리
+- 🔄 **세션 재개**: 중단된 작업을 이어서 진행 가능
+- 📊 **품질 관리**: 번역 → 검토 → 검증 3단계 워크플로우
+- 👀 **로컬 프리뷰**: 번역 결과를 즉시 확인 가능
+
 ## 아키텍처
 
 **Orchestrator 중심 아키텍처**를 사용합니다.
@@ -29,7 +38,7 @@ AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입�
 │  Translator   │    │   Reviewer    │    │   Validator   │
 │    Worker     │    │    Worker     │    │    Worker     │
 │  (Stateless)  │    │  (Stateless)  │    │  (Stateless)  │
-│ 결과만 반환    │    │ 결과만 반환    │    │ 결과만 반환    │
+│   결과만 반환    │    │ 결과만 반환      │    │ 결과만 반환     │
 └───────────────┘    └───────────────┘    └───────────────┘
 ```
 
@@ -48,25 +57,41 @@ AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입�
 ```
 src/
 ├── main.py                    # 진입점 (CLI, AgentCore Runtime)
+├── cli.py                     # CLI 인터페이스
 │
 ├── task_manager/              # 중앙 집중식 태스크 관리
-│   ├── types.py               # Task, TaskResult, TaskStatus
+│   ├── types.py               # Task, TaskResult, TaskStatus, WorkflowProgress
 │   └── manager.py             # TaskManager 싱글톤
 │
 ├── agents/
-│   ├── analyzer.py            # Workshop 구조 분석
-│   ├── designer.py            # 설계 문서 생성
+│   ├── analyzer.py            # Workshop 구조 분석 (Haiku)
+│   ├── designer.py            # 설계 문서 생성 (Sonnet)
 │   ├── orchestrator.py        # Orchestrator 도구들
 │   └── workers/               # Stateless 워커들
-│       ├── translator_worker.py
-│       ├── reviewer_worker.py
-│       └── validator_worker.py
+│       ├── translator_worker.py  # 번역 워커 (Sonnet)
+│       ├── reviewer_worker.py    # 검토 워커 (Sonnet + MCP)
+│       └── validator_worker.py   # 검증 워커
 │
-├── mcp_client/                # MCP 클라이언트 (AWS Documentation)
-├── model/                     # 모델 로딩 (Opus, Sonnet)
+├── mcp_client/                # MCP 클라이언트
+│   └── client.py              # AWS Documentation MCP 연동
+│
+├── model/                     # 모델 로딩
+│   └── load.py                # Opus, Sonnet, Haiku 로더
+│
 ├── prompts/                   # 시스템 프롬프트
-└── tools/                     # 파일 읽기/쓰기 도구
+│   └── system_prompts.py      # 각 에이전트별 프롬프트
+│
+└── tools/                     # 파일 도구
+    └── file_tools.py          # Workshop 파일 읽기/쓰기
 ```
+
+## 모델 구성
+
+| 모델 | 용도 | 특징 |
+|------|------|------|
+| **Claude Opus 4.5** | Orchestrator (원격 모드) | Extended thinking 지원 |
+| **Claude Sonnet 4.5** | Designer, Translator, Reviewer | 균형 잡힌 성능 |
+| **Claude Haiku 4.5** | Analyzer | 빠른 처리 속도 |
 
 ## 워크플로우
 
@@ -104,6 +129,8 @@ Phase 7: 완료
 
 | 도구 | 설명 |
 |------|------|
+| `analyze_workshop` | Workshop 구조 분석, 번역 대상 파일 목록 반환 |
+| `generate_design` | 번역 설계 문서 생성 |
 | `initialize_workflow` | 워크플로우 초기화, tasks.md 생성 |
 | `run_translation_phase` | 번역 단계 병렬 실행 |
 | `run_review_phase` | 검토 단계 병렬 실행, review_report.md 생성 |
@@ -120,6 +147,7 @@ Phase 7: 완료
 
 | 파일 | 설명 |
 |------|------|
+| `design.md` | 번역 설계 문서 |
 | `tasks.md` | 태스크 진행 상태 (체크박스 형식) |
 | `review_report.md` | 검토 단계 리포트 (점수, PASS/FAIL 목록) |
 | `validate_report.md` | 검증 단계 리포트 (구조 검증 결과) |
@@ -188,9 +216,11 @@ Orchestrator: 기존 워크플로우 재개. 25/30 태스크 완료 상태 로�
               → 남은 5개 파일 번역 시작...
 ```
 
-### 필수 요구사항
+## 필수 요구사항
+
+- Python 3.10+
 - AWS 자격 증명 설정 (AWS CLI 또는 환경 변수)
-- Bedrock 모델 접근 권한 (Claude Sonnet)
+- Bedrock 모델 접근 권한 (Claude Opus, Sonnet, Haiku)
 
 ## 환경 변수
 
@@ -201,6 +231,15 @@ export AWS_REGION=us-west-2
 # AWS 프로파일 설정
 export AWS_PROFILE=your-profile
 ```
+
+## 의존성
+
+주요 패키지:
+- `strands-agents`: AI 에이전트 프레임워크
+- `strands-agents-tools`: 파일 읽기/쓰기 도구
+- `bedrock-agentcore`: AWS Bedrock AgentCore 런타임
+- `mcp`: Model Context Protocol 클라이언트
+- `boto3`: AWS SDK
 
 ## 문제 해결
 
@@ -222,6 +261,15 @@ export AWS_REGION=us-west-2
 
 # 파일 열기 제한 오류 시
 ulimit -n 10240
+```
+
+### MCP 연결 오류
+```bash
+# uvx 설치 확인
+uvx --version
+
+# AWS Documentation MCP 서버 테스트
+uvx awslabs.aws-documentation-mcp-server@latest
 ```
 
 ## 개발자 정보

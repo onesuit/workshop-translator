@@ -704,9 +704,12 @@ def _get_preview_build_path() -> str:
     return None
 
 
-def _get_preview_build_download_url() -> str:
+def _get_preview_build_download_url() -> tuple:
     """
     현재 OS/아키텍처에 맞는 preview_build 다운로드 URL 반환
+    
+    Returns:
+        tuple: (download_url, filename) 또는 (None, None)
     """
     import platform
     
@@ -716,46 +719,85 @@ def _get_preview_build_download_url() -> str:
     base_url = "https://artifacts.us-east-1.prod.workshops.aws/v2/cli"
     
     if system == "darwin":
-        # macOS
+        # macOS - ARM만 지원 (Intel Mac은 공식 지원 종료)
         if machine == "arm64":
-            return f"{base_url}/osx_arm/preview_build"
+            return f"{base_url}/osx_arm/preview_build", "preview_build"
         else:
-            # Intel Mac (x86_64)
-            return f"{base_url}/osx/preview_build"
+            # Intel Mac도 ARM 버전 시도 (Rosetta 2로 실행 가능)
+            return f"{base_url}/osx_arm/preview_build", "preview_build"
     elif system == "linux":
-        return f"{base_url}/linux/preview_build"
+        # Linux - ARM64와 x86_64 구분
+        if machine in ("aarch64", "arm64"):
+            return f"{base_url}/linux_arm/preview_build", "preview_build"
+        else:
+            return f"{base_url}/linux/preview_build", "preview_build"
     elif system == "windows":
-        return f"{base_url}/windows/preview_build.exe"
+        return f"{base_url}/windows/preview_build.exe", "preview_build.exe"
     
     # 지원하지 않는 OS
-    return None
+    return None, None
 
 
-def _download_preview_build(dest_path: str) -> bool:
+def _download_preview_build(dest_dir: str) -> str:
     """
     preview_build 파일을 다운로드
     
     Args:
-        dest_path: 저장할 경로
+        dest_dir: 저장할 디렉토리 경로
     
     Returns:
-        bool: 성공 여부
+        str: 다운로드된 파일 경로 (실패 시 None)
     """
     import urllib.request
     
-    download_url = _get_preview_build_download_url()
+    download_url, filename = _get_preview_build_download_url()
     if not download_url:
-        return False
+        return None
+    
+    dest_path = os.path.join(dest_dir, filename)
     
     try:
         print(f"preview_build 다운로드 중... ({download_url})")
         urllib.request.urlretrieve(download_url, dest_path)
-        os.chmod(dest_path, 0o755)
+        
+        # Windows가 아닌 경우 실행 권한 부여
+        import platform
+        if platform.system().lower() != "windows":
+            os.chmod(dest_path, 0o755)
+        
         print(f"preview_build 다운로드 완료: {dest_path}")
-        return True
+        return dest_path
     except Exception as e:
         print(f"preview_build 다운로드 실패: {e}")
-        return False
+        return None
+
+
+def _terminate_preview_process():
+    """OS별로 프리뷰 프로세스 종료"""
+    global _preview_process
+    
+    if _preview_process is None:
+        return
+    
+    import platform
+    system = platform.system().lower()
+    
+    try:
+        if system == "windows":
+            # Windows: taskkill 사용
+            _preview_process.terminate()
+        else:
+            # macOS/Linux: 프로세스 그룹 종료
+            os.killpg(os.getpgid(_preview_process.pid), signal.SIGTERM)
+        
+        _preview_process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        # 강제 종료
+        if system == "windows":
+            _preview_process.kill()
+        else:
+            os.killpg(os.getpgid(_preview_process.pid), signal.SIGKILL)
+        _preview_process.wait(timeout=2)
 
 
 @tool
@@ -808,32 +850,55 @@ def run_preview_phase(port: int = 8080, tasks_path: str = None) -> dict:
     # 이미 실행 중인 프로세스가 있으면 종료
     if _preview_process is not None:
         try:
-            _preview_process.terminate()
-            _preview_process.wait(timeout=5)
+            _terminate_preview_process()
         except:
             pass
         _preview_process = None
     
+    # OS 확인
+    import platform
+    system = platform.system().lower()
+    
     # preview_build 파일 확인 또는 다운로드
-    preview_build_dst = os.path.join(workshop_path, "preview_build")
+    _, filename = _get_preview_build_download_url()
+    if not filename:
+        return {
+            "error": "지원하지 않는 운영체제입니다.",
+            "hint": "macOS, Linux, Windows만 지원됩니다."
+        }
+    
+    preview_build_path = os.path.join(workshop_path, filename)
     
     # workshop에 없으면 AWS에서 다운로드
-    if not os.path.exists(preview_build_dst):
-        if not _download_preview_build(preview_build_dst):
+    if not os.path.exists(preview_build_path):
+        downloaded_path = _download_preview_build(workshop_path)
+        if not downloaded_path:
             return {
                 "error": "preview_build 다운로드에 실패했습니다.",
                 "hint": "네트워크 연결을 확인하거나 수동으로 preview_build를 workshop 경로에 복사하세요."
             }
+        preview_build_path = downloaded_path
     
-    # 백그라운드로 실행
+    # OS별 실행 방식
     try:
-        _preview_process = subprocess.Popen(
-            [preview_build_dst, "-port", str(port)],
-            cwd=workshop_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True  # 독립적인 프로세스 그룹
-        )
+        if system == "windows":
+            # Windows: CREATE_NEW_PROCESS_GROUP 플래그 사용
+            _preview_process = subprocess.Popen(
+                [preview_build_path, "-port", str(port)],
+                cwd=workshop_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            # macOS/Linux: start_new_session으로 독립 프로세스 그룹 생성
+            _preview_process = subprocess.Popen(
+                [preview_build_path, "-port", str(port)],
+                cwd=workshop_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
         _preview_port = port
         
         # 잠시 대기하여 프로세스가 정상 시작되었는지 확인
@@ -880,9 +945,7 @@ def stop_preview() -> dict:
         return {"message": "실행 중인 프리뷰 서버가 없습니다."}
     
     try:
-        # 프로세스 그룹 전체 종료
-        os.killpg(os.getpgid(_preview_process.pid), signal.SIGTERM)
-        _preview_process.wait(timeout=5)
+        _terminate_preview_process()
         
         port = _preview_port
         _preview_process = None
@@ -892,11 +955,7 @@ def stop_preview() -> dict:
             "message": f"✅ 프리뷰 서버가 종료되었습니다. (포트: {port})",
             "stopped": True
         }
-    except subprocess.TimeoutExpired:
-        # 강제 종료
-        os.killpg(os.getpgid(_preview_process.pid), signal.SIGKILL)
+    except Exception as e:
         _preview_process = None
         _preview_port = None
-        return {"message": "프리뷰 서버가 강제 종료되었습니다.", "stopped": True}
-    except Exception as e:
         return {"error": f"프리뷰 서버 종료 실패: {e}"}

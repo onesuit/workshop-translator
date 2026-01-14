@@ -5,6 +5,17 @@ All notable changes to WsTranslator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.35] - 2026-01-14
+
+### Changed
+- preview_build 다운로드 URL 수정 (Linux ARM 추가, macOS Intel 제거)
+- OS별 프리뷰 서버 실행/종료 로직 개선 (Windows, macOS, Linux 지원)
+- README.md 전면 업데이트 (프로젝트 구조, 모델 구성, 의존성 정보 추가)
+
+### Fixed
+- Windows에서 프리뷰 서버 실행 시 `CREATE_NEW_PROCESS_GROUP` 플래그 사용
+- Windows에서 `chmod` 호출 스킵
+
 ## [0.1.33] - 2026-01-13
 
 ### Added
