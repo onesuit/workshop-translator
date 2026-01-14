@@ -5,6 +5,12 @@ All notable changes to WsTranslator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.36] - 2026-01-14
+
+### Changed
+- README 다국어 지원 (영문 메인, 한국어 별도 파일)
+- PyPI 페이지에서 영문 README 표시
+
 ## [0.1.35] - 2026-01-14
 
 ### Changed

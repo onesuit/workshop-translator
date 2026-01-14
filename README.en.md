@@ -1,6 +1,6 @@
 # Workshop Translator
 
-🌐 **Language**: English | [한국어](./README.ko.md)
+🌐 **Language**: English | [한국어](https://github.com/onesuit/workshop-translator/blob/main/WsTranslator/README.ko.md)
 
 AI-powered CLI tool for automatically translating AWS Workshop documents.
 

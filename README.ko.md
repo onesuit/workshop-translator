@@ -1,6 +1,6 @@
 # Workshop Translator
 
-🌐 **언어**: [English](./README.en.md) | 한국어
+🌐 **언어**: [English](https://github.com/onesuit/workshop-translator/blob/main/WsTranslator/README.en.md) | 한국어
 
 AWS Workshop 문서를 자동으로 번역하는 AI Agent 기반 CLI 도구입니다.
 
