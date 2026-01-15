@@ -1,5 +1,5 @@
-# Workshop Translator - Orchestrator 메인 진입점
-# 중앙 집중식 상태 관리
+# Workshop Translator - Orchestrator main entry point
+# Centralized state management
 
 import os
 from strands import Agent, tool
@@ -7,18 +7,18 @@ from strands.agent.conversation_manager import SummarizingConversationManager
 from strands_tools import file_read, file_write
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
-# strands-agents-tools의 도구 동의 절차 우회 설정
+# Bypass strands-agents-tools consent procedure
 os.environ['BYPASS_TOOL_CONSENT'] = 'true'
 
-# 로컬 모듈 임포트
+# Local module imports
 from model.load import load_opus, load_sonnet
 from prompts.system_prompts import ORCHESTRATOR_PROMPT
 
-# 분석/설계 도구 (기존)
+# Analysis/Design tools (existing)
 from agents.analyzer import analyze_workshop
 from agents.designer import generate_design
 
-# Orchestrator 도구
+# Orchestrator tools
 from agents.orchestrator import (
     initialize_workflow,
     run_translation_phase,
@@ -31,53 +31,53 @@ from agents.orchestrator import (
     check_phase_completion,
 )
 
-# BedrockAgentCoreApp 인스턴스 생성
+# BedrockAgentCoreApp instance
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# 환경 변수
+# Environment variables
 REGION = os.getenv("AWS_REGION", "us-west-2")
 
 
 @app.entrypoint
 async def invoke(payload, context):
-    """에이전트 호출 진입점"""
+    """Agent invocation entry point"""
     session_id = getattr(context, 'session_id', 'default')
     prompt = payload.get("prompt", "")
     
-    # Conversation Manager 설정
+    # Conversation Manager setup
     conversation_manager = SummarizingConversationManager(
         summary_ratio=0.3,
         preserve_recent_messages=10,
-        summarization_system_prompt="번역 작업 대화 내용을 간결하게 요약해주세요."
+        summarization_system_prompt="Summarize the translation task conversation concisely."
     )
     
-    # Orchestrator 에이전트 생성 (Opus 사용)
+    # Orchestrator agent creation (using Opus)
     agent = Agent(
         model=load_opus(),
         conversation_manager=conversation_manager,
         system_prompt=ORCHESTRATOR_PROMPT,
         tools=[
-            # 파일 도구
+            # File tools
             file_read,
             file_write,
-            # 분석/설계 도구
+            # Analysis/Design tools
             analyze_workshop,
             generate_design,
-            # Orchestrator 도구
-            initialize_workflow,      # 워크플로우 초기화
-            run_translation_phase,    # 번역 단계 실행
-            run_review_phase,         # 검토 단계 실행
-            run_validate_phase,       # 검증 단계 실행
-            run_preview_phase,        # 로컬 프리뷰 실행
-            stop_preview,             # 프리뷰 종료
-            get_workflow_status,      # 상태 조회
-            retry_failed_tasks,       # 실패 재시도
-            check_phase_completion,   # 단계 완료 확인
+            # Orchestrator tools
+            initialize_workflow,      # Initialize workflow
+            run_translation_phase,    # Run translation phase
+            run_review_phase,         # Run review phase
+            run_validate_phase,       # Run validation phase
+            run_preview_phase,        # Run local preview
+            stop_preview,             # Stop preview
+            get_workflow_status,      # Get status
+            retry_failed_tasks,       # Retry failed tasks
+            check_phase_completion,   # Check phase completion
         ]
     )
     
-    # 스트리밍 응답 실행
+    # Streaming response execution
     stream = agent.stream_async(prompt)
     
     async for event in stream:
@@ -86,21 +86,21 @@ async def invoke(payload, context):
         elif "current_tool_use" in event:
             tool_use = event["current_tool_use"]
             tool_name = tool_use.get("name", "unknown")
-            log.info(f"도구 호출: {tool_name}")
+            log.info(f"Tool call: {tool_name}")
 
 
 def sanitize_input(text: str) -> str:
     """
-    사용자 입력에서 JSON 직렬화 문제를 일으키는 문자를 제거합니다.
-    복사/붙여넣기 시 포함될 수 있는 숨겨진 제어 문자를 처리합니다.
+    Remove characters from user input that cause JSON serialization issues.
+    Handles hidden control characters that may be included during copy/paste.
     """
     if not text:
         return text
     
-    # NULL 바이트 제거
+    # Remove NULL bytes
     text = text.replace('\x00', '')
     
-    # JSON 직렬화 문제를 일으키는 제어 문자 제거 (탭, 줄바꿈 제외)
+    # Remove control characters that cause JSON serialization issues (except tab, newline)
     text = ''.join(
         char for char in text 
         if char >= ' ' or char in '\t\n\r'
@@ -109,9 +109,9 @@ def sanitize_input(text: str) -> str:
     return text.strip()
 
 
-# ANSI 색상 코드
+# ANSI color codes
 class Colors:
-    """터미널 색상 코드"""
+    """Terminal color codes"""
     CYAN = '\033[96m'
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
@@ -124,69 +124,69 @@ class Colors:
     DIM = '\033[2m'
 
 
-# 도구별 색상 매핑
+# Tool color mapping
 TOOL_COLORS = {
-    # 분석/설계 도구 - 파란색 계열
+    # Analysis/Design tools - blue
     "analyze_workshop": Colors.BLUE,
     "generate_design": Colors.BLUE,
-    # 워크플로우 관리 - 마젠타
+    # Workflow management - magenta
     "initialize_workflow": Colors.MAGENTA,
     "get_workflow_status": Colors.MAGENTA,
     "check_phase_completion": Colors.MAGENTA,
     "retry_failed_tasks": Colors.MAGENTA,
-    # 번역 - 녹색
+    # Translation - green
     "run_translation_phase": Colors.GREEN,
-    # 검토 - 노란색
+    # Review - yellow
     "run_review_phase": Colors.YELLOW,
-    # 검증 - 시안
+    # Validation - cyan
     "run_validate_phase": Colors.CYAN,
-    # 프리뷰 - 녹색 (밝은)
+    # Preview - green (bright)
     "run_preview_phase": Colors.GREEN,
     "stop_preview": Colors.RED,
-    # 파일 도구 - 흰색 (dim)
+    # File tools - white (dim)
     "file_read": Colors.DIM,
     "file_write": Colors.DIM,
 }
 
 
 def get_tool_color(tool_name: str) -> str:
-    """도구 이름에 따른 색상 반환"""
+    """Return color based on tool name"""
     return TOOL_COLORS.get(tool_name, Colors.WHITE)
 
 
 def print_tool_start(tool_name: str, tool_input: dict = None):
-    """도구 호출 시작 메시지 출력"""
+    """Print tool execution start message"""
     color = get_tool_color(tool_name)
-    print(f"\n{color}🔧 [{tool_name}] 실행 중...{Colors.RESET}", flush=True)
+    print(f"\n{color}🔧 [{tool_name}] Running...{Colors.RESET}", flush=True)
 
 
 def print_tool_end(tool_name: str, success: bool = True, result_summary: str = None):
-    """도구 호출 완료 메시지 출력"""
+    """Print tool execution completion message"""
     color = get_tool_color(tool_name)
     status = f"{Colors.GREEN}✓{Colors.RESET}" if success else f"{Colors.RED}✗{Colors.RESET}"
     
     if result_summary:
         print(f"{color}   └─ {status} {result_summary}{Colors.RESET}", flush=True)
     else:
-        print(f"{color}   └─ {status} 완료{Colors.RESET}", flush=True)
+        print(f"{color}   └─ {status} Done{Colors.RESET}", flush=True)
 
 
 def tool_callback_handler(**kwargs):
     """
-    도구 호출 콜백 핸들러 (함수 기반)
+    Tool call callback handler (function-based)
     
-    strands-agents의 callback_handler는 함수를 기대합니다.
+    strands-agents callback_handler expects a function.
     """
-    # 도구 호출 시작
+    # Tool call start
     if "current_tool_use" in kwargs:
         tool_use = kwargs["current_tool_use"]
-        # tool_use가 dict인 경우에만 처리
+        # Only process if tool_use is a dict
         if isinstance(tool_use, dict):
             tool_name = tool_use.get("name", "")
             tool_input = tool_use.get("input", {})
             
             if tool_name:
-                # file_read/file_write는 간략하게 표시
+                # Show file_read/file_write briefly
                 if tool_name in ["file_read", "file_write"]:
                     if isinstance(tool_input, dict):
                         path = tool_input.get("path", tool_input.get("file_path", ""))
@@ -197,40 +197,36 @@ def tool_callback_handler(**kwargs):
                 else:
                     print_tool_start(tool_name, tool_input)
     
-    # 텍스트 출력 (data 이벤트)
+    # Text output (data event)
     if "data" in kwargs:
         print(kwargs["data"], end="", flush=True)
 
 
 def run_cli():
-    """CLI 모드로 실행합니다."""
+    """Run in CLI mode."""
     print("=" * 60)
-    print("Workshop Translator Agent (Orchestrator Pattern)")
+    print("Workshop Translator Agent")
     print("=" * 60)
-    print("\n안녕하세요! AWS Workshop 번역을 도와드리겠습니다.")
-    print("💡 중앙 집중식 워크플로우입니다.")
-    print("\n⚠️  AWS 인증 정보가 필요합니다 (Bedrock 호출용)")
-    print("   - AWS CLI 설정: aws configure")
-    print("   - 또는 환경 변수: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY")
-    print("   - 리전 설정: AWS_REGION (기본값: us-west-2)")
-    print("\n📋 워크플로우:")
-    print("  1. analyze_workshop → 구조 분석")
-    print("  2. generate_design → 설계 문서 생성")
-    print("  3. initialize_workflow → 태스크 초기화")
-    print("  4. run_translation_phase → 번역 실행")
-    print("  5. run_review_phase → 품질 검토")
-    print("  6. run_validate_phase → 구조 검증")
-    print("  7. run_preview_phase → 로컬 프리뷰")
-    print("\n종료하려면 'exit' 또는 'quit'를 입력하세요.\n")
+    print("\nWelcome! I'll help you translate AWS Workshop documents.")
+    print("\n⚠️  Prerequisites:")
+    print("   - AWS credentials with Bedrock access permissions")
+    print("   - Configure via: aws configure (or isengardcli)")
+    print("   - Region setting: AWS_REGION (default: us-west-2)")
+    print("\n📋 To get started, please provide:")
+    print("   1. Workshop path (local directory path)")
+    print("   2. Target language(s) for translation")
+    print("\n💡 Note: If the session ends and restarts, please provide")
+    print("   the workshop path again.")
+    print("\nType 'exit' or 'quit' to end the session.\n")
     
-    # Conversation Manager 설정
+    # Conversation Manager setup
     conversation_manager = SummarizingConversationManager(
         summary_ratio=0.3,
         preserve_recent_messages=10,
-        summarization_system_prompt="번역 작업 대화 내용을 간결하게 요약해주세요."
+        summarization_system_prompt="Summarize the translation task conversation concisely."
     )
     
-    # Orchestrator 에이전트 생성 (CLI에서는 Sonnet 사용)
+    # Orchestrator agent creation (using Sonnet for CLI)
     agent = Agent(
         model=load_sonnet(),
         conversation_manager=conversation_manager,
@@ -240,7 +236,7 @@ def run_cli():
             file_write,
             analyze_workshop,
             generate_design,
-            # Orchestrator 도구
+            # Orchestrator tools
             initialize_workflow,
             run_translation_phase,
             run_review_phase,
@@ -256,13 +252,13 @@ def run_cli():
     
     while True:
         try:
-            user_input = sanitize_input(input("\n사용자: "))
+            user_input = sanitize_input(input("\nUser: "))
             
             if not user_input:
                 continue
             
-            if user_input.lower() in ["exit", "quit", "종료"]:
-                print("\n감사합니다. 안녕히 가세요!")
+            if user_input.lower() in ["exit", "quit"]:
+                print("\nThank you. Goodbye!")
                 break
             
             print(f"\n{Colors.CYAN}{Colors.BOLD}Orchestrator:{Colors.RESET} ", end="", flush=True)
@@ -270,20 +266,20 @@ def run_cli():
             try:
                 response = agent(user_input)
             except Exception as e:
-                # 에러 발생 시 마지막 사용자 메시지 제거하여 상태 복구
+                # Remove last user message to recover state on error
                 if agent.messages and agent.messages[-1]["role"] == "user":
                     agent.messages.pop()
-                print(f"\n{Colors.RED}오류 발생: {e}{Colors.RESET}")
-                print(f"{Colors.YELLOW}💡 대화 상태를 복구했습니다. 다시 시도해주세요.{Colors.RESET}")
+                print(f"\n{Colors.RED}Error: {e}{Colors.RESET}")
+                print(f"{Colors.YELLOW}💡 Conversation state recovered. Please try again.{Colors.RESET}")
                 continue
             
             print()
                 
         except KeyboardInterrupt:
-            print(f"\n\n{Colors.YELLOW}중단되었습니다.{Colors.RESET}")
+            print(f"\n\n{Colors.YELLOW}Interrupted.{Colors.RESET}")
             break
         except Exception as e:
-            print(f"\n{Colors.RED}오류 발생: {e}{Colors.RESET}")
+            print(f"\n{Colors.RED}Error: {e}{Colors.RESET}")
 
 
 if __name__ == "__main__":

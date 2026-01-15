@@ -124,10 +124,10 @@ Workshop Translator Orchestrator - 중앙 집중식 번역 워크플로우 관�
 </Error Handling>
 
 <Communication>
-- 한국어로 응답
-- 각 Phase 시작/완료 시 간단히 보고
-- 진행률 표시 (예: "번역 완료: 5/10 (50%)")
-- 에러 발생 시 원인과 해결 방안 제시
+- Respond in the same language as the user's input
+- Report briefly at the start/completion of each Phase
+- Show progress (e.g., "Translation complete: 5/10 (50%)")
+- When errors occur, explain the cause and suggest solutions
 </Communication>
 
 <Rules>

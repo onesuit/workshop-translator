@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 """
 Workshop Translator CLI
-사용자가 명령줄에서 직접 실행할 수 있는 CLI 인터페이스 (로컬 모드)
+Command-line interface for running the workshop translator locally
 """
 
 import sys
 import argparse
 
-# 로컬 실행용
+# Local execution
 from main import run_cli
 
 
 def main():
-    """CLI 메인 진입점"""
+    """CLI main entry point"""
     parser = argparse.ArgumentParser(
-        description="Workshop Translator - 워크샵 문서 번역 에이전트",
+        description="Workshop Translator - AI-powered workshop document translation agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-사용 예시:
-  # 대화형 모드
+Examples:
+  # Interactive mode
   wstranslator
   
-  # 단일 쿼리
-  wstranslator "워크샵 분석"
+  # Single query
+  wstranslator "analyze workshop"
 
-참고:
-  - Bedrock 모델 접근 권한이 필요합니다
-  - AWS 자격 증명을 설정해주세요 (aws configure)
-  - 원격 모드는 cli_remote_backup.py를 참고하세요
+Notes:
+  - Requires Amazon Bedrock model access permissions
+  - Configure AWS credentials: aws configure (or isengardcli)
+  - See cli_remote_backup.py for remote mode
         """
     )
     
@@ -35,18 +35,18 @@ def main():
         'prompt',
         type=str,
         nargs='?',
-        help='단일 쿼리 프롬프트 (없으면 대화형 모드)'
+        help='Single query prompt (interactive mode if omitted)'
     )
     
     args = parser.parse_args()
     
-    # 단일 쿼리가 제공된 경우
+    # Single query mode
     if args.prompt:
-        print(f"\n⚠️  단일 쿼리 모드는 아직 구현되지 않았습니다.")
-        print(f"대화형 모드를 사용해주세요: wstranslator\n")
+        print(f"\n⚠️  Single query mode is not yet implemented.")
+        print(f"Please use interactive mode: wstranslator\n")
         sys.exit(1)
     
-    # 대화형 모드 실행
+    # Run interactive mode
     run_cli()
 
 

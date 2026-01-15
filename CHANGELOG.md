@@ -5,6 +5,11 @@ All notable changes to WsTranslator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.38] - 2026-01-15
+
+### Changed
+- CLI 언어를 영어로 변경 (글로벌 사용자 지원)
+
 ## [0.1.37] - 2026-01-14
 
 ### Fixed
